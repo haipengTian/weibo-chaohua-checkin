@@ -6,8 +6,8 @@ umask 077
 readonly OLD_DIR=/opt/weibo-checkin
 readonly NEW_DIR=/opt/weibo-portal
 readonly DOMAIN=wb.thpvip.xyz
-readonly RELEASE=portal-v0.1.0
-readonly IMAGE=ghcr.io/haipengtian/weibo-chaohua-checkin@sha256:5fec5b7161f83237cc247ef4fa28021c7ede150592f3618cc2c8b094bd49b736
+readonly RELEASE=portal-v0.1.1
+readonly IMAGE=ghcr.io/haipengtian/weibo-chaohua-checkin@sha256:b6ff37222cc4a0bf94e62e47afd938b7619fe55c0c849c80066d7ed653c526f2
 readonly SOURCE=https://raw.githubusercontent.com/haipengTian/weibo-chaohua-checkin
 
 [[ $(id -u) == 0 ]] || { echo '请使用 root 或 sudo bash 运行。' >&2; exit 1; }
