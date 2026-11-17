@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="csp-nonce" content="__CSP_STYLE_NONCE__" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>登录 · 超话签到</title>
+    <link rel="icon" href="/assets/mark.svg" />
+    <link rel="stylesheet" href="/assets/portal.css" />
+    <link rel="stylesheet" href="/assets/components/credit-controls.css" />
+    <script src="/assets/theme.js"></script>
+    <script src="/assets/login.js" defer></script>
+    <script src="/assets/components/credit-controls.js" type="module"></script>
+  </head>
+  <body>
+    <main class="login-shell">
+      <aside class="login-story">
+        <a class="brand" href="/login"
+          ><img src="/assets/mark.svg" alt="" /><span
+            >超话<small>DAILY CHECK-IN</small></span
+          ></a
+        >
+        <div class="story-center">
+          <span class="badge">微博超话 · 每日签到</span>
+          <h1>热爱不打烊，<br />签到不缺席。</h1>
+          <p>
+            连接你的微博账号，选好每天的签到时间。<br />把重复的事交给计划，把时间留给热爱。
+          </p>
+          <div class="story-art" aria-hidden="true">
+            <div class="art-grid">
+              <span class="art-day signed">✓</span
+              ><span class="art-day signed">✓</span
+              ><span class="art-day signed">✓</span
+              ><span class="art-day signed">✓</span
+              ><span class="art-day signed">✓</span
+              ><span class="art-day signed">✓</span
+              ><span class="art-day signed">✓</span
+              ><span class="art-day signed">✓</span
+              ><span class="art-day">09</span><span class="art-day">10</span
+              ><span class="art-day">11</span><span class="art-day">12</span
+              ><span class="art-day">13</span><span class="art-day">14</span
+              ><span class="art-day">15</span>
+            </div>
+            <div class="art-caption">你的每日计划，从这里开始</div>
+          </div>
+        </div>
+        <span class="muted">一个工作台，管理你的多个微博账号。</span>
+      </aside>
+      <section class="login-form-panel">
+        <button
+          id="theme-toggle"
+          class="icon-button login-theme"
+          aria-label="切换明暗主题"
+        >
+          ◐
+        </button>
+        <div class="auth-box">
+          <a class="brand login-mobile-brand" href="/login"
+            ><img src="/assets/mark.svg" alt="" /><span
+              >超话<small>DAILY CHECK-IN</small></span
+            ></a
+          >
+          <div data-credit-form="login"></div>
+          <div class="auth-help">
+            <span aria-hidden="true">◇</span
+            ><span
+              >平台密码与微博密码相互独立。登录后通过微博 App
+              扫码绑定，无需提供微博密码。</span
+            >
+          </div>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>

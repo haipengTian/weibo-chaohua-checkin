@@ -1,0 +1,48 @@
+services:
+  weibo-portal:
+    image: ${PORTAL_IMAGE:-weibo-portal:local}
+    build: .
+    command:
+      [
+        "uvicorn",
+        "portal:app",
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "8787",
+        "--workers",
+        "1",
+        "--proxy-headers",
+      ]
+    restart: unless-stopped
+    init: true
+    user: "10001:10001"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    ports:
+      - "127.0.0.1:8788:8787"
+    environment:
+      TZ: Asia/Shanghai
+      PANEL_USER: ${PANEL_USER:-avatar}
+      PANEL_PASSWORD: ${PANEL_PASSWORD:?请在 .env.portal 中配置首次启动的强密码}
+      PORTAL_COOKIE_SECURE: "1"
+      # 只填写实际可信的反代来源；部署前核对容器网络网关。
+      FORWARDED_ALLOW_IPS: ${FORWARDED_ALLOW_IPS:-127.0.0.1}
+    volumes:
+      - ./portal-data:/app/data:Z
+    tmpfs:
+      - /tmp:size=32m,mode=1777
+    stop_grace_period: 5m
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8787/healthz', timeout=3)",
+        ]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3

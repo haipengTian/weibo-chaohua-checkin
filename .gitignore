@@ -17,3 +17,17 @@ Thumbs.db
 
 # WorkBuddy 工作区数据
 .workbuddy/
+
+# Local browser verification (contains fixture credentials and disposable data)
+.preview/
+.pytest_cache/
+.coverage
+htmlcov/
+.env
+.env.*
+!.env.portal.example
+portal-data/
+.ruff_cache/
+node_modules/
+frontend/test-results/
+frontend/playwright-report/

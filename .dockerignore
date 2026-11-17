@@ -5,3 +5,17 @@ data/
 *.md
 start.bat
 .git
+.venv/
+venv/
+.preview/
+.pytest_cache/
+.ruff_cache/
+tests/
+docs/
+.env
+.env.*
+portal-data/
+!NOTICE.md
+**/node_modules/
+frontend/test-results/
+frontend/playwright-report/

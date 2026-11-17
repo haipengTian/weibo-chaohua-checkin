@@ -1,0 +1,303 @@
+.checkin-calendar {
+  padding: 24px;
+}
+.checkin-calendar-heading,
+.checkin-calendar-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.checkin-calendar-heading p {
+  font-size: 12px;
+  color: var(--muted-foreground);
+  margin-top: 4px;
+}
+.checkin-calendar-toolbar {
+  margin-top: 20px;
+  align-items: end;
+}
+.checkin-calendar-toolbar > .credit-field {
+  width: 320px;
+  max-width: 75%;
+}
+.checkin-calendar-toolbar [data-slot="label"] {
+  font-size: 12px;
+  color: var(--muted-foreground);
+}
+.checkin-calendar-summary {
+  display: flex;
+  align-items: center;
+  gap: 32px;
+  padding: 20px 0;
+  border-bottom: 1px solid var(--border);
+}
+.checkin-calendar-summary > div {
+  flex-shrink: 0;
+}
+.checkin-calendar-summary span {
+  display: block;
+  font-size: 12px;
+  color: var(--muted-foreground);
+}
+.checkin-calendar-summary strong {
+  font-size: 28px;
+  line-height: 1.5;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.checkin-calendar-summary small {
+  font-size: 12px;
+  font-weight: 400;
+  margin-left: 6px;
+  color: var(--muted-foreground);
+}
+.checkin-calendar-summary p {
+  margin-left: auto;
+  max-width: 290px;
+  font-size: 12px;
+  color: var(--muted-foreground);
+  line-height: 1.8;
+}
+.checkin-calendar-body {
+  display: grid;
+  grid-template-columns: minmax(0, 384px) minmax(0, 1fr);
+  gap: 32px;
+  padding-top: 24px;
+}
+.checkin-month {
+  min-width: 0;
+}
+.checkin-month-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.checkin-month-heading h3 {
+  font-size: 14px;
+  font-weight: 500;
+}
+.checkin-month-navigation {
+  display: flex;
+  gap: 4px;
+}
+.checkin-month-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 8px;
+}
+/* Preserve status colors and square sizing over the shared Button utilities. */
+@layer components {
+  .checkin-calendar .checkin-tile {
+    width: 100% !important;
+    height: auto !important;
+    aspect-ratio: 1 !important;
+    padding: 0 !important;
+    border: 1px solid var(--border) !important;
+    border-radius: 10px !important;
+    background: var(--card) !important;
+    color: var(--muted-foreground) !important;
+    font-size: 13px !important;
+    font-weight: 400 !important;
+    font-variant-numeric: tabular-nums;
+    box-shadow: none !important;
+    transition:
+      outline-color 150ms,
+      opacity 150ms !important;
+  }
+  .checkin-calendar .checkin-tile.success {
+    background: var(--foreground) !important;
+    border-color: var(--foreground) !important;
+    color: var(--background) !important;
+  }
+  .checkin-calendar .checkin-tile.partial {
+    background: color-mix(in srgb, var(--amber) 12%, var(--card)) !important;
+    border-color: color-mix(
+      in srgb,
+      var(--amber) 35%,
+      var(--border)
+    ) !important;
+    color: var(--amber) !important;
+  }
+  .checkin-calendar .checkin-tile.failed {
+    background: color-mix(in srgb, var(--red) 10%, var(--card)) !important;
+    border-color: color-mix(in srgb, var(--red) 30%, var(--border)) !important;
+    color: var(--red) !important;
+  }
+  .checkin-calendar .checkin-tile.active {
+    background: var(--muted) !important;
+    color: var(--foreground) !important;
+  }
+  .checkin-calendar .checkin-tile[aria-current="date"] {
+    border-color: var(--foreground) !important;
+  }
+  .checkin-calendar .checkin-tile[aria-pressed="true"],
+  .checkin-calendar .checkin-tile:focus-visible {
+    outline: 2px solid var(--foreground) !important;
+    outline-offset: 3px !important;
+  }
+  .checkin-calendar .checkin-tile:hover:not(:disabled) {
+    opacity: 0.75 !important;
+  }
+}
+.checkin-legend-cell {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  border: 1px solid var(--border);
+  background: var(--card);
+  flex-shrink: 0;
+}
+.checkin-legend-cell.success {
+  background: var(--foreground);
+  border-color: var(--foreground);
+}
+.checkin-legend-cell.partial {
+  background: var(--amber);
+  border-color: var(--amber);
+}
+.checkin-legend-cell.failed {
+  background: var(--red);
+  border-color: var(--red);
+}
+.checkin-legend-cell.active {
+  background: var(--muted);
+  border-color: var(--muted-foreground);
+}
+.checkin-calendar-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 16px;
+  font-size: 12px;
+  color: var(--muted-foreground);
+}
+.checkin-calendar-legend > span {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.checkin-day-details {
+  border-left: 1px solid var(--border);
+  padding-left: 32px;
+  min-width: 0;
+}
+.checkin-day-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 2px 0 16px;
+}
+.checkin-day-heading h3 {
+  font-size: 16px;
+}
+.checkin-day-heading small {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--muted-foreground);
+  margin-left: 10px;
+}
+.checkin-status {
+  font-size: 11px;
+  color: var(--muted-foreground);
+}
+.checkin-status.success {
+  color: var(--green);
+}
+.checkin-status.partial {
+  color: var(--amber);
+}
+.checkin-status.failed {
+  color: var(--red);
+}
+.checkin-day-count {
+  font-size: 12px;
+  color: var(--muted-foreground);
+  margin-bottom: 12px;
+}
+.checkin-calendar .checkin-run-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.checkin-run-list li {
+  padding: 14px 0;
+  border-top: 1px solid var(--border);
+}
+.checkin-run-list li > div {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+}
+.checkin-run-list time {
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted-foreground);
+}
+.checkin-run-list p {
+  font-size: 13px;
+  margin: 8px 0 4px;
+  overflow-wrap: anywhere;
+}
+.checkin-run-list small {
+  font-size: 11px;
+  color: var(--muted-foreground);
+  line-height: 1.8;
+  display: block;
+}
+.checkin-day-pager {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12px;
+  color: var(--muted-foreground);
+  margin-top: 12px;
+}
+.checkin-day-empty,
+.checkin-calendar-empty {
+  padding: 36px 0;
+  text-align: center;
+  font-size: 13px;
+  color: var(--muted-foreground);
+}
+.checkin-calendar-empty button {
+  margin-top: 18px;
+}
+.checkin-calendar-message {
+  font-size: 13px;
+  padding: 20px 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+@media (max-width: 760px) {
+  .checkin-calendar {
+    padding: 20px 16px;
+  }
+  .checkin-calendar-summary {
+    flex-wrap: wrap;
+    gap: 16px 32px;
+  }
+  .checkin-calendar-summary p {
+    margin: 0;
+    max-width: none;
+    width: 100%;
+  }
+  .checkin-calendar-body {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 24px;
+  }
+  .checkin-day-details {
+    border-left: 0;
+    border-top: 1px solid var(--border);
+    padding: 24px 0 0;
+  }
+  .checkin-calendar-legend {
+    gap: 10px;
+  }
+}

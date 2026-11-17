@@ -1,0 +1,233 @@
+/* Credit's Tailwind v4 components, scoped reset only; no page-wide preflight. */
+@layer theme, base, components, utilities;
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities) important;
+@source './';
+@custom-variant dark (&:is(.dark *));
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-popover: var(--card);
+  --color-popover-foreground: var(--foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--foreground);
+  --color-input: var(--border);
+  --color-border: var(--border);
+  --color-ring: oklch(0.705 0.015 286.067);
+  --color-destructive: var(--red);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+}
+.credit-controls,
+.credit-popup {
+  font: inherit;
+  color: var(--foreground);
+}
+.credit-controls,
+.credit-popup,
+.credit-controls *,
+.credit-popup * {
+  box-sizing: border-box;
+  border-width: 0;
+  border-style: solid;
+  border-color: var(--border);
+}
+.credit-controls button,
+.credit-popup button {
+  font-family: inherit;
+  background-color: transparent;
+  color: inherit;
+}
+.credit-controls fieldset {
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+  display: grid;
+  gap: 18px;
+}
+.credit-controls button:disabled {
+  cursor: not-allowed;
+}
+.credit-controls svg,
+.credit-popup svg {
+  display: block;
+  flex-shrink: 0;
+}
+.credit-controls [data-slot="input"] {
+  font-family: inherit;
+  line-height: 1.5;
+}
+.credit-controls [data-slot="label"] {
+  line-height: 1.4;
+}
+.credit-field {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+}
+.credit-plan-form {
+  display: grid;
+  gap: 12px;
+}
+.credit-plan-form .credit-field:first-child {
+  margin-bottom: 0;
+}
+.credit-switch-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 2px 0;
+}
+.credit-switch-row p {
+  font-size: 11px;
+  color: var(--muted-foreground);
+  margin-top: 5px;
+}
+.credit-form-feedback,
+.credit-form-error {
+  font-size: 12px;
+  line-height: 1.7;
+  margin: 0;
+}
+.credit-form-feedback {
+  color: var(--muted-foreground);
+}
+.credit-form-error {
+  color: var(--red);
+}
+.credit-filter-form {
+  display: flex;
+  align-items: end;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 0 20px 20px;
+}
+.credit-filter-form > .credit-field {
+  flex: 1;
+  min-width: 125px;
+}
+.credit-filter-form [data-slot="label"] {
+  font-size: 11px;
+  color: var(--muted-foreground);
+  font-weight: 400;
+}
+.credit-filter-actions {
+  display: flex;
+  gap: 6px;
+}
+.credit-user-search > .credit-field {
+  max-width: 400px;
+}
+.credit-auth-description {
+  color: var(--muted-foreground);
+  font-size: 12px;
+  margin-top: 9px;
+}
+.credit-auth-tabs {
+  margin: 24px 0 16px;
+}
+.credit-auth-form small {
+  font-size: 11px;
+  color: var(--muted-foreground);
+}
+.credit-auth-form fieldset {
+  gap: 18px;
+}
+.credit-picker-footer {
+  display: flex;
+  justify-content: space-between;
+  border-top: 1px solid var(--border);
+  padding: 10px;
+}
+.credit-time-columns {
+  display: flex;
+  align-items: end;
+  gap: 12px;
+}
+.credit-time-columns > .credit-field {
+  flex: 1;
+}
+.credit-time-separator {
+  align-self: end;
+  line-height: 36px;
+  color: var(--muted-foreground);
+}
+.credit-picker-title {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  font-weight: 550;
+  margin-bottom: 16px;
+}
+.credit-picker-title span {
+  font-size: 10px;
+  color: var(--muted-foreground);
+  font-weight: 400;
+}
+.credit-time-actions {
+  display: flex;
+  justify-content: end;
+  gap: 6px;
+  margin-top: 16px;
+}
+.credit-popup {
+  z-index: 60;
+  max-width: calc(100vw - 24px);
+}
+.credit-popup [data-slot="calendar"] {
+  --cell-size: 32px;
+}
+.credit-popup table {
+  border-collapse: collapse;
+  white-space: normal;
+  margin: 0;
+  font-size: 12px;
+}
+.credit-popup th {
+  font-size: 11px;
+  line-height: 20px;
+  background: none;
+  height: auto;
+}
+.credit-popup td,
+.credit-popup th {
+  padding: 0;
+  border: 0;
+  height: auto;
+}
+.credit-popup button {
+  line-height: 1.3;
+}
+.credit-popup [data-slot="select-item"] {
+  min-height: 32px;
+}
+.credit-popup [data-slot="select-content"] {
+  z-index: 70;
+}
+.credit-controls .error-box {
+  margin: 0;
+}
+@media (max-width: 640px) {
+  .credit-filter-form {
+    padding: 0 16px 16px;
+    gap: 10px;
+  }
+  .credit-filter-form > .credit-field {
+    min-width: calc(50% - 5px);
+  }
+  .credit-filter-actions {
+    width: 100%;
+    justify-content: end;
+  }
+  .credit-popup [data-slot="select-item"] {
+    min-height: 36px;
+  }
+}

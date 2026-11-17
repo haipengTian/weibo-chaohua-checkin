@@ -47,8 +47,8 @@ def _rsa_encrypt(pubkey_hex: str, text: str) -> str:
 class QRLogin:
     """发起一次微博扫码登录会话。"""
 
-    def __init__(self):
-        self.session = requests.Session()
+    def __init__(self, session=None):
+        self.session = session if session is not None else requests.Session()
         self.session.headers.update({
             "User-Agent": PC_UA,
             "Referer": "https://passport.weibo.com/",
@@ -87,7 +87,7 @@ class QRLogin:
     RET_INVALID = (50114003, 50114004, 50114015)
     RET_OK = 20000000
 
-    def poll(self):
+    def poll(self, *, strict=False):
         """轮询扫码状态。
 
         返回 (status, payload):
@@ -105,6 +105,8 @@ class QRLogin:
             data = _parse_jsonp(r.text)
         except (requests.RequestException, ValueError, json.JSONDecodeError) as e:
             self.last = {"retcode": None, "msg": str(e)[:80]}
+            if strict:
+                raise
             return "waiting", None
         try:
             ret = int(data.get("retcode"))
@@ -125,7 +127,7 @@ class QRLogin:
             if not url:
                 return "confirmed", {}
             return "confirmed", self._exchange(url)
-        return "waiting", None
+        return ("blocked", None) if strict else ("waiting", None)
 
     def _exchange(self, alt_url: str) -> dict:
         """用确认后的跳转地址换取全站 Cookie (PC + 移动端)。
@@ -263,12 +265,16 @@ class WeiboClient:
         return r.json()
 
     # -- 登录状态 ----------------------------------------------------------
-    def login_info(self) -> dict:
+    def login_info(self, *, strict=False) -> dict:
         try:
             j = self.get_json("https://m.weibo.cn/api/config")
         except Exception:
+            if strict:
+                raise
             return {"login": False}
         data = j.get("data") or {}
+        if strict and (not isinstance(data, dict) or "login" not in data):
+            raise ValueError("微博登录检测响应无效")
         return {"login": bool(data.get("login")), "uid": str(data.get("uid") or "")}
 
     def get_nickname(self, uid: str) -> str:
@@ -283,7 +289,7 @@ class WeiboClient:
             return ""
 
     # -- 超话 --------------------------------------------------------------
-    def fetch_topics(self):
+    def fetch_topics(self, *, strict=False):
         """分页拉取关注的超话。
 
         返回 (signable, done, total):
@@ -295,7 +301,7 @@ class WeiboClient:
         识别不出来的会记在 self.scan["unknown"] 里, 供「签到检测」展示。
         """
         signable, done, total = [], 0, 0
-        self.scan = {"unknown": []}
+        self.scan = {"unknown": [], "complete": True}
         seen_pages = set()
         since_id = ""
         for _ in range(40):  # 最多 40 页, 防止异常循环
@@ -305,8 +311,14 @@ class WeiboClient:
             try:
                 j = self.get_json("https://m.weibo.cn/api/container/getIndex", params)
             except Exception:
+                self.scan["complete"] = False
+                if strict:
+                    raise
                 break
             if j.get("ok") != 1:
+                self.scan["complete"] = False
+                if strict:
+                    raise ValueError("微博超话列表暂不可用")
                 break
             data = j.get("data") or {}
             for card in data.get("cards") or []:
@@ -332,10 +344,15 @@ class WeiboClient:
                     else:
                         self.scan["unknown"].append({"name": name, "buttons": names[:4]})
             since_id = str(data.get("since_id") or "")
-            if not since_id or since_id in seen_pages:
+            if not since_id:
+                break
+            if since_id in seen_pages:
+                self.scan["complete"] = False
                 break
             seen_pages.add(since_id)
             time.sleep(random.uniform(0.5, 1.0))
+        else:
+            self.scan["complete"] = False
         return signable, done, total
 
     def detect(self) -> dict:
@@ -345,7 +362,7 @@ class WeiboClient:
                 "pending": [t["name"] for t in signable],
                 "unknown": self.scan.get("unknown", [])}
 
-    def sign(self, item):
+    def sign(self, item, *, strict=False):
         """对单个超话执行签到, 返回 (成功?, 消息)。"""
         try:
             j = self.get_json("https://m.weibo.cn" + item["scheme"])
@@ -357,4 +374,6 @@ class WeiboClient:
                 return True, msg
             return False, str(j.get("msg") or ("ok=%s" % j.get("ok")))
         except Exception as e:
+            if strict:
+                raise
             return False, str(e)[:120]

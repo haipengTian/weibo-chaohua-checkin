@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="csp-nonce" content="__CSP_STYLE_NONCE__" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>超话 · 签到工作台</title>
+    <link rel="icon" href="/assets/mark.svg" />
+    <link rel="stylesheet" href="/assets/portal.css" />
+    <link rel="stylesheet" href="/assets/components/credit-controls.css" />
+    <script src="/assets/theme.js"></script>
+    <script src="/assets/portal.js" type="module"></script>
+  </head>
+  <body>
+    <div id="app" aria-busy="true">
+      <div class="initial-loading" role="status">正在加载工作台…</div>
+    </div>
+    <div id="toast" role="status" aria-live="polite" hidden></div>
+    <dialog id="qr-dialog" aria-labelledby="qr-title">
+      <div class="dialog-top">
+        <div>
+          <span class="eyebrow">连接微博</span>
+          <h2 id="qr-title">扫码绑定微博账号</h2>
+        </div>
+        <button class="icon-button" id="qr-close" aria-label="关闭扫码弹窗">
+          ×
+        </button>
+      </div>
+      <p class="muted">使用微博 App 扫码，并在手机上确认登录。</p>
+      <div id="qr-body" class="qr-body" role="status"></div>
+      <div class="dialog-footer">
+        <span id="qr-status" class="muted">正在获取二维码…</span
+        ><button id="qr-retry" class="button secondary" hidden>重新获取</button>
+      </div>
+    </dialog>
+  </body>
+</html>
