@@ -1,8 +1,7 @@
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Check } from "lucide-react";
+import { Check, Minus, RefreshCw, Search } from "lucide-react";
 import { Choice } from "./fields";
 import type { CalendarAccount } from "./checkin-calendar";
 import "./topics.css";
@@ -90,12 +89,14 @@ function SelectableTopics({
   allItems,
   items,
   ready,
+  complete,
 }: {
   accountId: string;
   selection: Selection;
   allItems: Topic[];
   items: Topic[];
   ready: boolean;
+  complete: boolean;
 }) {
   // Keep each account's unsaved choices when switching accounts or refreshing scans.
   const [drafts, setDrafts] = useState<Record<string, Selection>>({});
@@ -119,14 +120,18 @@ function SelectableTopics({
     setFeedback((previous) => ({ ...previous, [accountId]: {} }));
   }
   function toggleVisible(checked: boolean) {
-    const next = new Set(selected);
+    const next = new Set(
+      draft.mode === "all"
+        ? allItems.flatMap((topic) => (topic.id ? [topic.id] : []))
+        : selected,
+    );
     items.forEach((item) => {
       if (item.id) {
         if (checked) next.add(item.id);
         else next.delete(item.id);
       }
     });
-    update({ ...draft, topic_ids: [...next] });
+    update({ ...draft, mode: "selected", topic_ids: [...next] });
   }
   async function save() {
     setFeedback((previous) => ({ ...previous, [accountId]: { saving: true } }));
@@ -161,7 +166,7 @@ function SelectableTopics({
       });
       setFeedback((previous) => ({
         ...previous,
-        [accountId]: { message: "已保存，手动和定时签到均按此范围执行。" },
+        [accountId]: { message: "已保存" },
       }));
       document.dispatchEvent(new CustomEvent("credit:topics-saved"));
     } catch (error) {
@@ -179,37 +184,184 @@ function SelectableTopics({
   const missing = draft.topic_ids.filter(
     (id) => !allItems.some((topic) => topic.id === id),
   ).length;
+  const visibleIds = items.flatMap((topic) => (topic.id ? [topic.id] : []));
+  const visibleSelected = visibleIds.filter(
+    (id) => draft.mode === "all" || selected.has(id),
+  ).length;
+  const allVisible =
+    visibleIds.length > 0 && visibleSelected === visibleIds.length;
   if (!ready) return null;
   return (
     <div className="topic-selection">
       <div className="selection-settings">
-        <div className="credit-field">
-          <Label htmlFor="topic-mode">签到范围</Label>
-          <Choice
-            id="topic-mode"
-            label="签到范围"
-            value={draft.mode}
-            onChange={(mode) => {
-              if (!state.saving)
+        <div className="selection-mode" role="group" aria-label="签到范围">
+          {(
+            [
+              ["all", "全部签到"],
+              ["selected", "自选超话"],
+            ] as const
+          ).map(([mode, label]) => (
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              key={mode}
+              aria-pressed={draft.mode === mode}
+              title={
+                mode === "selected"
+                  ? "只签到勾选的超话；新关注需手动勾选"
+                  : "包含以后新关注的超话"
+              }
+              disabled={
+                state.saving ||
+                (mode === "selected" && draft.mode === "all" && !complete)
+              }
+              onClick={() => {
+                if (mode === draft.mode) return;
                 update({
                   ...draft,
-                  mode: mode as Selection["mode"],
+                  mode,
                   topic_ids:
-                    mode === "selected" && draft.mode === "all"
-                      ? allItems.flatMap((topic) =>
+                    mode === "all"
+                      ? []
+                      : allItems.flatMap((topic) =>
                           topic.id ? [topic.id] : [],
-                        )
-                      : draft.topic_ids,
+                        ),
                 });
-            }}
-            options={[
-              { value: "all", label: "全部关注超话" },
-              { value: "selected", label: "仅选中的超话" },
-            ]}
-          />
+              }}
+            >
+              {label}
+            </Button>
+          ))}
         </div>
-        <div className="selection-actions">
-          {dirty && (
+        <span className="selection-count">
+          {draft.mode === "all"
+            ? complete
+              ? "新关注也会自动签到"
+              : "刷新完整列表后可自选"
+            : `已选 ${selected.size} / ${allItems.length}`}
+        </span>
+      </div>
+      <div className="selection-list-heading">
+        <Button
+          type="button"
+          size="sm"
+          variant="ghost"
+          className="selection-toggle"
+          role="checkbox"
+          aria-checked={
+            allVisible ? true : visibleSelected > 0 ? "mixed" : false
+          }
+          aria-label={
+            items.length === allItems.length ? "全选超话" : "全选搜索结果"
+          }
+          disabled={
+            state.saving ||
+            !visibleIds.length ||
+            (draft.mode === "all" && !complete)
+          }
+          onClick={() => toggleVisible(!allVisible)}
+        >
+          <span className="topic-check" aria-hidden="true">
+            {allVisible ? (
+              <Check size={14} />
+            ) : visibleSelected > 0 ? (
+              <Minus size={14} />
+            ) : null}
+          </span>
+          {items.length === allItems.length
+            ? "全选"
+            : `搜索结果 ${items.length}`}
+        </Button>
+        <span className="topic-status">今日状态</span>
+      </div>
+      {missing > 0 && draft.mode === "selected" && (
+        <p className="topics-notice">
+          {missing} 个已选超话未在列表中找到
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            disabled={state.saving}
+            onClick={() =>
+              update({
+                ...draft,
+                topic_ids: draft.topic_ids.filter((id) =>
+                  allItems.some((topic) => topic.id === id),
+                ),
+              })
+            }
+          >
+            移除
+          </Button>
+        </p>
+      )}
+      {items.length > 0 && (
+        <ul className="topic-list selectable-topic-list">
+          {items.map((topic, index) => {
+            const checked =
+              draft.mode === "all" || (!!topic.id && selected.has(topic.id));
+            return (
+              <li key={topic.id || index}>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  className="topic-choice whitespace-normal h-auto justify-start px-2 py-0"
+                  role="checkbox"
+                  aria-checked={checked}
+                  aria-label={topic.name}
+                  disabled={
+                    !topic.id ||
+                    state.saving ||
+                    (draft.mode === "all" && !complete)
+                  }
+                  onClick={() => {
+                    const next = new Set(
+                      draft.mode === "all"
+                        ? allItems.flatMap((item) => (item.id ? [item.id] : []))
+                        : selected,
+                    );
+                    if (next.has(topic.id!)) next.delete(topic.id!);
+                    else next.add(topic.id!);
+                    update({
+                      ...draft,
+                      mode: "selected",
+                      topic_ids: [...next],
+                    });
+                  }}
+                >
+                  <span className="topic-check" aria-hidden="true">
+                    {checked && <Check size={14} />}
+                  </span>
+                  <span className="topic-name">
+                    {topic.name}
+                    {!topic.id && <small>请刷新后选择</small>}
+                  </span>
+                </Button>
+                <span className={`topic-status ${topic.status}`}>
+                  {labels[topic.status] || "待确认"}
+                </span>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+      {draft.mode === "selected" && !selected.size && (
+        <p className="topics-notice">
+          {dirty
+            ? "未选择超话，保存后暂停这个微博的签到。"
+            : "这个微博已暂停签到，勾选超话即可恢复。"}
+        </p>
+      )}
+      {state.error && (
+        <p role="alert" className="credit-form-error">
+          {state.error}
+        </p>
+      )}
+      {dirty ? (
+        <div className="selection-footer">
+          <span className="selection-count">未保存</span>
+          <div className="selection-actions">
             <Button
               type="button"
               size="sm"
@@ -217,123 +369,23 @@ function SelectableTopics({
               disabled={state.saving}
               onClick={() => update(base)}
             >
-              撤销修改
+              取消
             </Button>
-          )}
-          <Button
-            type="button"
-            size="sm"
-            disabled={!dirty || state.saving}
-            onClick={save}
-          >
-            {state.saving ? "正在保存…" : "保存签到范围"}
-          </Button>
+            <Button
+              type="button"
+              size="sm"
+              disabled={state.saving}
+              onClick={save}
+            >
+              {state.saving ? "保存中…" : "保存"}
+            </Button>
+          </div>
         </div>
-      </div>
-      <p className="topics-notice">
-        {draft.mode === "all"
-          ? "包含以后新关注的超话。"
-          : `已选 ${selected.size} 个；以后新关注的超话需手动勾选。`}
-        {draft.mode === "selected" &&
-          !selected.size &&
-          "未选择时暂停该微博的手动和定时签到。"}
-        {dirty && <strong> 有未保存的修改。</strong>}
-      </p>
-      {state.error && (
-        <p role="alert" className="credit-form-error">
-          {state.error}
-        </p>
-      )}
-      {state.message && (
+      ) : state.message ? (
         <p role="status" className="selection-saved">
           {state.message}
         </p>
-      )}
-      {draft.mode === "selected" && (
-        <>
-          <div className="selection-bulk">
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              disabled={state.saving || !items.some((item) => item.id)}
-              onClick={() => toggleVisible(true)}
-            >
-              全选当前结果
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              variant="ghost"
-              disabled={state.saving || !items.some((item) => item.id)}
-              onClick={() => toggleVisible(false)}
-            >
-              取消当前结果
-            </Button>
-          </div>
-          {missing > 0 && (
-            <p className="topics-notice">
-              有 {missing} 个已选超话不在当前列表中，请刷新确认。
-              <Button
-                type="button"
-                size="sm"
-                variant="ghost"
-                disabled={state.saving}
-                onClick={() =>
-                  update({
-                    ...draft,
-                    topic_ids: draft.topic_ids.filter((id) =>
-                      allItems.some((topic) => topic.id === id),
-                    ),
-                  })
-                }
-              >
-                移除未显示的选择
-              </Button>
-            </p>
-          )}
-        </>
-      )}
-      {items.length ? (
-        <ul className="topic-list">
-          {items.map((topic, index) => (
-            <li key={topic.id || index}>
-              {draft.mode === "selected" ? (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  className="topic-choice whitespace-normal h-auto justify-start"
-                  role="checkbox"
-                  aria-checked={!!topic.id && selected.has(topic.id)}
-                  aria-label={topic.name}
-                  disabled={!topic.id || state.saving}
-                  onClick={() => {
-                    const next = new Set(selected);
-                    if (next.has(topic.id!)) next.delete(topic.id!);
-                    else next.add(topic.id!);
-                    update({ ...draft, topic_ids: [...next] });
-                  }}
-                >
-                  <span className="topic-check" aria-hidden="true">
-                    {topic.id && selected.has(topic.id) && <Check size={14} />}
-                  </span>
-                  <span className="topic-name">
-                    {topic.name}
-                    {!topic.id && <small>缺少超话标识，请刷新后选择</small>}
-                  </span>
-                </Button>
-              ) : (
-                <span className="topic-name">{topic.name}</span>
-              )}
-              <span className={`topic-status ${topic.status}`}>
-                {labels[topic.status] || "待确认"}
-              </span>
-            </li>
-          ))}
-        </ul>
-      ) : (
-        <p className="topics-empty">没有可显示的超话</p>
-      )}
+      ) : null}
     </div>
   );
 }
@@ -462,20 +514,34 @@ export function FollowedTopics({
     >
       <div className="topics-heading">
         <div>
-          <h2>关注的超话</h2>
-          <p>查看今日状态，设置这个微博需要签到的超话。</p>
+          <h2>超话签到</h2>
+          {scan?.scanned_at ? (
+            <p>
+              {scan.complete ? "关注" : "已读取"} {scan.items.length} 个
+              {scan.fresh
+                ? ` · 今日已签 ${scan.items.filter((topic) => topic.status === "done").length} 个`
+                : " · 今日状态待刷新"}
+            </p>
+          ) : null}
         </div>
         {accountId && (
           <Button
             type="button"
             size="sm"
-            variant="outline"
+            variant="ghost"
+            title={
+              scan?.scanned_at
+                ? `同步于 ${new Intl.DateTimeFormat("zh-CN", { timeZone: "Asia/Shanghai", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }).format(scan.scanned_at * 1000)}`
+                : "刷新关注列表"
+            }
+            aria-label="刷新超话"
             disabled={current.loading || scan?.status === "scanning"}
             onClick={() => reload("POST")}
           >
+            <RefreshCw size={14} />
             {current.loading || scan?.status === "scanning"
-              ? "正在扫描…"
-              : "刷新超话"}
+              ? "扫描中…"
+              : "刷新"}
           </Button>
         )}
       </div>
@@ -485,7 +551,6 @@ export function FollowedTopics({
         <>
           <div className="topics-toolbar">
             <div className="credit-field">
-              <Label htmlFor="topics-account">微博账号</Label>
               <Choice
                 id="topics-account"
                 label="微博账号"
@@ -500,12 +565,14 @@ export function FollowedTopics({
                 }))}
               />
             </div>
-            <div className="credit-field">
-              <Label htmlFor="topic-search">搜索超话</Label>
+            <div className="topic-search">
+              <Search size={14} aria-hidden="true" />
               <Input
                 id="topic-search"
                 type="search"
-                placeholder="输入超话名称"
+                placeholder="搜索超话"
+                aria-label="搜索超话"
+                className="pl-8"
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
               />
@@ -536,26 +603,6 @@ export function FollowedTopics({
               {notices[scan.status]}
             </p>
           )}
-          {scan?.scanned_at ? (
-            <div className="topics-summary">
-              <span>
-                {scan.complete ? "关注" : "已读取"} {scan.items.length} 个超话
-                {scan.fresh
-                  ? ` · 今日已签 ${scan.items.filter((topic) => topic.status === "done").length} 个`
-                  : " · 今日状态待刷新"}
-              </span>
-              <span>
-                同步于{" "}
-                {new Intl.DateTimeFormat("zh-CN", {
-                  timeZone: "Asia/Shanghai",
-                  month: "2-digit",
-                  day: "2-digit",
-                  hour: "2-digit",
-                  minute: "2-digit",
-                }).format(scan.scanned_at * 1000)}
-              </span>
-            </div>
-          ) : null}
           {current.loading && !scan && (
             <p className="topics-empty" role="status">
               正在加载超话…
@@ -569,6 +616,7 @@ export function FollowedTopics({
             allItems={scan?.items || []}
             items={items}
             ready={!!scan && !!current.selection}
+            complete={!!scan?.complete}
           />
           {!items.length && scan?.scanned_at ? (
             <p className="topics-empty">

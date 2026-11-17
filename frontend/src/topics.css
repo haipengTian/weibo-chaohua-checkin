@@ -2,13 +2,11 @@
   padding: 24px;
   scroll-margin-top: 80px;
 }
-.topics-heading,
-.topics-summary {
+.topics-heading {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
-  flex-wrap: wrap;
+  gap: 12px;
 }
 .topics-heading p {
   color: var(--muted-foreground);
@@ -16,25 +14,25 @@
   margin-top: 4px;
 }
 .topics-toolbar {
-  display: flex;
-  gap: 16px;
-  margin: 20px 0 16px;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: minmax(0, 280px) minmax(0, 1fr);
+  gap: 12px;
+  margin: 16px 0;
 }
 .topics-toolbar .credit-field {
-  width: 300px;
-  max-width: 100%;
-  flex: 1;
-  min-width: 180px;
+  min-width: 0;
 }
-.topics-toolbar label {
-  font-size: 12px;
-  color: var(--muted-foreground);
+.topic-search {
+  position: relative;
+  min-width: 0;
 }
-.topics-summary {
-  font-size: 12px;
+.topic-search > svg {
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  transform: translateY(-50%);
   color: var(--muted-foreground);
-  margin: 16px 0 10px;
+  pointer-events: none;
 }
 .topics-notice {
   font-size: 12px;
@@ -88,44 +86,72 @@
 }
 .selection-settings,
 .selection-actions,
-.selection-bulk {
+.selection-list-heading,
+.selection-footer {
   display: flex;
   gap: 8px;
-  flex-wrap: wrap;
   align-items: center;
+  justify-content: space-between;
 }
 .selection-settings {
-  justify-content: space-between;
-  padding-top: 16px;
+  flex-wrap: wrap;
+  padding: 0 0 12px;
+}
+.selection-mode {
+  display: inline-flex;
+  padding: 3px;
+  background: var(--secondary);
+  border-radius: 8px;
+}
+.credit-controls .selection-mode button[aria-pressed="true"] {
+  background: var(--card) !important;
+  color: var(--foreground);
+  box-shadow: 0 1px 3px #00000012;
+}
+.selection-mode button[aria-pressed="false"] {
+  color: var(--muted-foreground);
+}
+.selection-count,
+.selection-saved {
+  color: var(--muted-foreground);
+  font-size: 12px;
+}
+.selection-list-heading {
+  padding: 4px 0;
   border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
 }
-.selection-settings .credit-field {
-  flex: 1;
-  min-width: 180px;
-  max-width: 300px;
+.credit-controls .selection-toggle {
+  padding-left: 8px !important;
+  min-height: 36px;
+  font-size: 12px;
 }
-.selection-actions {
-  align-self: end;
-}
-.selection-bulk {
-  margin: 12px 0;
+.selection-footer {
+  position: sticky;
+  bottom: 12px;
+  padding: 10px 12px;
+  margin-top: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--card);
+  box-shadow: 0 3px 12px #00000008;
+  z-index: 1;
 }
 .selection-saved {
   color: var(--green);
-  font-size: 12px;
-  margin: 10px 0;
+  margin: 10px 0 0;
 }
 .credit-controls .topic-choice {
-  justify-content: start;
-  white-space: normal;
-  height: auto;
-  min-height: 40px;
-  padding: 6px 8px;
-  margin: -6px 0 -6px -8px;
+  min-height: 44px;
   flex: 1;
   min-width: 0;
   text-align: left;
   font-size: 13px;
+}
+.selectable-topic-list > li {
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
 }
 .topic-check {
   display: inline-flex;
@@ -137,7 +163,9 @@
   align-items: center;
   justify-content: center;
 }
-.topic-choice[aria-checked="true"] .topic-check {
+.topic-choice[aria-checked="true"] .topic-check,
+.selection-toggle[aria-checked="true"] .topic-check,
+.selection-toggle[aria-checked="mixed"] .topic-check {
   background: var(--primary);
   color: var(--primary-foreground);
   border-color: var(--primary);
@@ -159,24 +187,38 @@
 .run-topics-content .topic-list {
   max-height: 240px;
 }
+@media (min-width: 900px) {
+  .credit-controls .selectable-topic-list {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: 32px;
+  }
+  .selectable-topic-list > li:last-child {
+    border-bottom: 1px solid var(--border);
+  }
+}
 @media (max-width: 640px) {
   .followed-topics {
     padding: 20px 16px;
   }
-  .topics-toolbar .credit-field {
-    width: 100%;
-    min-width: 0;
+  .topics-toolbar {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 8px;
+  }
+  .selection-mode {
+    flex: 1;
+  }
+  .selection-mode button {
+    flex: 1;
+  }
+  .selection-count {
+    white-space: nowrap;
+  }
+  .selection-settings > .selection-count {
     flex-basis: 100%;
   }
-  .selection-settings .credit-field {
-    max-width: none;
-    flex-basis: 100%;
-    min-width: 0;
-  }
-  .selection-actions {
-    width: 100%;
-    justify-content: end;
-    margin-top: 4px;
+  .selection-footer {
+    bottom: 8px;
   }
   .run-topics-content {
     min-width: 0;
