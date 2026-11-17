@@ -11,6 +11,7 @@
 """
 import base64
 import binascii
+import html
 import json
 import random
 import re
@@ -23,6 +24,18 @@ PC_UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
          "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36")
 M_UA = ("Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) "
         "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1")
+
+
+def topic_name(card):
+    """取超话可读标题，不把卡片 ID 当名称展示。"""
+    for field in ("title_sub", "title", "name"):
+        value = card.get(field)
+        if not isinstance(value, str):
+            continue
+        name = html.unescape(re.sub(r"<[^>]*>", "", value)).strip()
+        if name and name not in {str(card.get("id", "")), str(card.get("itemid", ""))} and not re.fullmatch(r"100808[0-9a-fA-F]{16,}", name):
+            return name[:200]
+    return "未返回超话名称"
 
 
 def _parse_jsonp(text: str) -> dict:
@@ -301,7 +314,7 @@ class WeiboClient:
         识别不出来的会记在 self.scan["unknown"] 里, 供「签到检测」展示。
         """
         signable, done, total = [], 0, 0
-        self.scan = {"unknown": [], "complete": True}
+        self.scan = {"unknown": [], "topics": [], "complete": True}
         seen_pages = set()
         since_id = ""
         for _ in range(40):  # 最多 40 页, 防止异常循环
@@ -322,17 +335,23 @@ class WeiboClient:
                 break
             data = j.get("data") or {}
             for card in data.get("cards") or []:
-                for g in card.get("card_group") or []:
-                    name = (g.get("title_sub") or g.get("title") or "").strip()
+                for g in card.get("card_group") or [card]:
+                    name = topic_name(g)
                     buttons = g.get("buttons") or []
-                    if not buttons:
-                        continue
-                    total += 1
                     names = [(b.get("name") or "").strip() for b in buttons]
                     joined = " ".join(names)
+                    if not card.get("card_group") and "100808" not in str(g.get("scheme", "")) and not any(word in joined for word in ("签到", "打卡", "明日再来", "已签")):
+                        continue
+                    if not buttons and "100808" not in str(g.get("scheme", "")):
+                        continue
+                    total += 1
+                    topic_index = len(self.scan["topics"])
+                    topic = {"name": name, "status": "unknown"}
+                    self.scan["topics"].append(topic)
                     # 已签: 已签到 / 已签 / 明日再来 / 已打卡
                     if ("已签" in joined) or ("明日再来" in joined) or ("已打卡" in joined):
                         done += 1
+                        topic["status"] = "done"
                         continue
                     # 可签: 文案含 签到/打卡 且带 scheme
                     btn = next((b for b in buttons
@@ -340,7 +359,8 @@ class WeiboClient:
                                     or "打卡" in (b.get("name") or ""))
                                 and b.get("scheme")), None)
                     if btn:
-                        signable.append({"name": name, "scheme": btn["scheme"]})
+                        topic["status"] = "pending"
+                        signable.append({"name": name, "scheme": btn["scheme"], "topic_index": topic_index})
                     else:
                         self.scan["unknown"].append({"name": name, "buttons": names[:4]})
             since_id = str(data.get("since_id") or "")

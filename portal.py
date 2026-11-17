@@ -16,7 +16,13 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from portal_db import BindingConflict, Database, validate_time, validate_username
+from portal_db import (
+    BindingConflict,
+    Database,
+    RegistrationClosed,
+    validate_time,
+    validate_username,
+)
 from portal_runtime import service_lock
 from portal_security import DUMMY_PASSWORD, verify_password
 from portal_tasks import SHANGHAI, AlreadyCheckedIn, Runner
@@ -51,6 +57,11 @@ class PlanBody(BaseModel):
     @classmethod
     def valid_time(cls, value):
         return validate_time(value)
+
+
+class SystemSettingsBody(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    registration_enabled: bool
 
 
 def create_app(
@@ -247,6 +258,13 @@ def create_app(
 
     def page(filename, request):
         html = (ROOT / "static/portal" / filename).read_text(encoding="utf-8")
+        if filename == "login.html":
+            html = html.replace(
+                "__REGISTRATION_ENABLED__",
+                "true"
+                if app.state.db.system_settings()["registration_enabled"]
+                else "false",
+            )
         return HTMLResponse(
             html.replace("__CSP_STYLE_NONCE__", request.state.style_nonce)
         )
@@ -270,7 +288,13 @@ def create_app(
     def register(body: Registration, request: Request):
         rate("register:" + (request.client.host if request.client else "unknown"), 10)
         try:
-            user = app.state.db.create_user(body.username, body.password)
+            user = app.state.db.create_user(
+                body.username, body.password, self_registration=True
+            )
+        except RegistrationClosed as error:
+            return JSONResponse(
+                {"detail": str(error), "code": "registration_closed"}, status_code=403
+            )
         except sqlite3.IntegrityError:
             raise HTTPException(409, "用户名已存在") from None
         return auth_response(user, status=201)
@@ -322,6 +346,31 @@ def create_app(
             raise HTTPException(409, "该微博账号正在签到，请等待完成")
         app.state.runner.submit(run)
         return {"run": run}
+
+    @app.get("/api/accounts/{account_id}/topics")
+    def followed_topics(account_id: str, user=Depends(current_user)):
+        account_for(user, account_id)
+        return {
+            "scan": app.state.db.topic_scan(
+                account_id, dt.datetime.now(SHANGHAI).date().isoformat()
+            )
+        }
+
+    @app.post("/api/accounts/{account_id}/topics/refresh")
+    def refresh_topics(account_id: str, user=Depends(current_user)):
+        account = account_for(user, account_id)
+        rate("topics:" + user["id"], 10, 60)
+        result = app.state.runner.scan_topics(account)
+        if result["status"] == "busy":
+            raise HTTPException(409, "该账号正在处理任务，请稍后刷新超话")
+        return {"scan": result}
+
+    @app.get("/api/runs/{run_id}/topics")
+    def run_topic_details(run_id: str, user=Depends(current_user)):
+        run = app.state.db.run(run_id)
+        if not run or (user["role"] != "admin" and run["user_id"] != user["id"]):
+            raise HTTPException(404, "未找到签到记录")
+        return {"items": app.state.db.run_topics(run_id), "status": run["status"]}
 
     @app.get("/api/settings")
     def get_plan(user=Depends(current_user)):
@@ -396,7 +445,7 @@ def create_app(
             uid = str(info["uid"])
             nickname = client.get_nickname(uid)
             try:
-                app.state.db.bind_account(
+                account = app.state.db.bind_account(
                     user["id"], uid, nickname, client.export_cookies()
                 )
             except BindingConflict:
@@ -408,6 +457,7 @@ def create_app(
                     "扫码绑定冲突，未更改原归属",
                 )
                 raise HTTPException(409, "该微博账号已被绑定") from None
+            app.state.runner.submit_topic_scan(account)
             return {"status": "confirmed"}
         except HTTPException:
             raise
@@ -495,6 +545,28 @@ def create_app(
         user=Depends(administrator),
     ):
         return app.state.db.users(page, page_size, search)
+
+    @app.post("/api/admin/users", status_code=201)
+    def admin_create_user(body: Registration, user=Depends(administrator)):
+        try:
+            created = app.state.db.create_user(
+                body.username, body.password, created_by=user["id"]
+            )
+        except sqlite3.IntegrityError:
+            raise HTTPException(409, "用户名已存在") from None
+        return {"user": created}
+
+    @app.get("/api/admin/settings")
+    def admin_settings(user=Depends(administrator)):
+        return {"settings": app.state.db.system_settings()}
+
+    @app.put("/api/admin/settings")
+    def update_admin_settings(body: SystemSettingsBody, user=Depends(administrator)):
+        return {
+            "settings": app.state.db.set_system_settings(
+                body.registration_enabled, user["id"]
+            )
+        }
 
     @app.get("/api/admin/runs")
     def admin_runs(

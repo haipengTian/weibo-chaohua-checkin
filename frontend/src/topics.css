@@ -1,0 +1,110 @@
+.followed-topics {
+  padding: 24px;
+  scroll-margin-top: 80px;
+}
+.topics-heading,
+.topics-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.topics-heading p {
+  color: var(--muted-foreground);
+  font-size: 12px;
+  margin-top: 4px;
+}
+.topics-toolbar {
+  display: flex;
+  gap: 16px;
+  margin: 20px 0 16px;
+  flex-wrap: wrap;
+}
+.topics-toolbar .credit-field {
+  width: 300px;
+  max-width: 100%;
+  flex: 1;
+  min-width: 180px;
+}
+.topics-toolbar label {
+  font-size: 12px;
+  color: var(--muted-foreground);
+}
+.topics-summary {
+  font-size: 12px;
+  color: var(--muted-foreground);
+  margin: 16px 0 10px;
+}
+.topics-notice {
+  font-size: 12px;
+  color: var(--muted-foreground);
+  line-height: 1.7;
+  margin: 10px 0;
+}
+.topics-empty {
+  padding: 28px 0;
+  text-align: center;
+  font-size: 13px;
+  color: var(--muted-foreground);
+}
+.credit-controls .topic-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 360px;
+  overflow-y: auto;
+  white-space: normal;
+}
+.topic-list > li {
+  display: flex;
+  justify-content: space-between;
+  align-items: start;
+  gap: 16px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+}
+.topic-list > li:last-child {
+  border-bottom: 0;
+}
+.topic-name {
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+.topic-status {
+  color: var(--muted-foreground);
+  font-size: 12px;
+  white-space: nowrap;
+}
+.topic-status.done,
+.topic-status.success,
+.topic-status.done_before {
+  color: var(--green);
+}
+.topic-status.failed,
+.topic-status.network_error {
+  color: var(--red);
+}
+.run-topics {
+  margin-top: 6px;
+}
+.run-topics-content {
+  min-width: 220px;
+  max-width: 420px;
+  white-space: normal;
+}
+.run-topics-content .topic-list {
+  max-height: 240px;
+}
+@media (max-width: 640px) {
+  .followed-topics {
+    padding: 20px 16px;
+  }
+  .topics-toolbar .credit-field {
+    width: 100%;
+  }
+  .run-topics-content {
+    min-width: 0;
+  }
+}

@@ -3,12 +3,14 @@ import {
   FiltersForm,
   LoginForm,
   PlanForm,
+  SystemSettingsForm,
   UserSearch,
   type FormProps,
 } from "./forms";
 import "./controls.css";
 import { CheckinCalendar } from "./checkin-calendar";
 import type { CalendarAccount } from "./checkin-calendar";
+import { FollowedTopics, RunTopics } from "./topics";
 
 const roots = new Map<HTMLElement, Root>();
 
@@ -24,11 +26,20 @@ export function mountControls(container: ParentNode = document) {
         root.render(<LoginForm />);
         return;
       }
-      if (host.dataset.creditForm === "calendar") {
+      if (
+        host.dataset.creditForm === "calendar" ||
+        host.dataset.creditForm === "topics"
+      ) {
         const props = JSON.parse(host.dataset.props || "{}") as {
           accounts: CalendarAccount[];
         };
-        root.render(<CheckinCalendar accounts={props.accounts} />);
+        root.render(
+          host.dataset.creditForm === "calendar" ? (
+            <CheckinCalendar accounts={props.accounts} />
+          ) : (
+            <FollowedTopics accounts={props.accounts} />
+          ),
+        );
         return;
       }
       const props = JSON.parse(host.dataset.props || "{}") as FormProps;
@@ -43,6 +54,10 @@ export function mountControls(container: ParentNode = document) {
         );
       else if (props.kind === "users")
         root.render(<UserSearch search={props.search} />);
+      else if (props.kind === "system-settings")
+        root.render(<SystemSettingsForm settings={props.settings} />);
+      else if (props.kind === "run-topics")
+        root.render(<RunTopics runId={props.runId} />);
     });
 }
 

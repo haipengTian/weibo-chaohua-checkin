@@ -60,6 +60,8 @@ const kinds = {
   login_check: "登录检测",
   migration: "数据迁移",
   qr: "扫码登录",
+  system: "系统设置",
+  topic_scan: "超话扫描",
 };
 const badge = (status) =>
   `<span class="badge ${escapeHTML(status)}"><span class="dot"></span>${escapeHTML(labels[status] || status || "暂无记录")}</span>`;
@@ -155,6 +157,7 @@ const adminNav = [
   ["anomalies", "异常监控", "alert"],
   ["runs", "执行记录", "list"],
   ["logs", "运行日志", "list"],
+  ["system-settings", "系统设置", "shield"],
 ];
 function shell() {
   const nav = isAdmin ? adminNav : userNav;
@@ -198,7 +201,7 @@ function accountRows(accounts) {
   return accounts
     .map(
       (account) =>
-        `<div class="account-row"><div class="avatar">${escapeHTML((account.nickname || "微").slice(0, 1))}</div><div class="account-body"><div class="account-name"><strong>${escapeHTML(account.nickname || "微博用户")}</strong>${badge(account.login_status)}</div><div class="account-meta"><span class="mono">UID ${escapeHTML(account.uid)}</span><span>检测于 ${formatTime(account.last_checked)}</span></div><div class="account-meta">${account.busy ? "正在执行签到任务…" : account.last_result ? `最近签到：${escapeHTML(labels[account.last_result] || account.last_result)}` : "还没有签到记录"}</div></div><div class="account-controls">${account.login_status === "expired" ? `<button class="button small secondary" data-action="bind">重新扫码</button>` : `<button class="button small ghost" data-action="check" data-id="${escapeHTML(account.id)}" ${account.busy ? "disabled" : ""}>检测登录</button>`}<button class="button small secondary" data-action="checkin" data-id="${escapeHTML(account.id)}" ${account.busy || account.last_success_date === today() ? "disabled" : ""}>${account.last_success_date === today() ? "今日已签到" : account.busy ? "执行中…" : "签到"}</button></div></div>`,
+        `<div class="account-row"><div class="avatar">${escapeHTML((account.nickname || "微").slice(0, 1))}</div><div class="account-body"><div class="account-name"><strong>${escapeHTML(account.nickname || "微博用户")}</strong>${badge(account.login_status)}</div><div class="account-meta"><span class="mono">UID ${escapeHTML(account.uid)}</span><span>检测于 ${formatTime(account.last_checked)}</span></div><div class="account-meta">${account.busy ? "正在执行签到任务…" : account.last_result ? `最近签到：${escapeHTML(labels[account.last_result] || account.last_result)}` : "还没有签到记录"}</div></div><div class="account-controls"><button class="button small ghost" data-action="topics" data-id="${escapeHTML(account.id)}">关注超话</button>${account.login_status === "expired" ? `<button class="button small secondary" data-action="bind">重新扫码</button>` : `<button class="button small ghost" data-action="check" data-id="${escapeHTML(account.id)}" ${account.busy ? "disabled" : ""}>检测登录</button>`}<button class="button small secondary" data-action="checkin" data-id="${escapeHTML(account.id)}" ${account.busy || account.last_success_date === today() ? "disabled" : ""}>${account.last_success_date === today() ? "今日已签到" : account.busy ? "执行中…" : "签到"}</button></div></div>`,
     )
     .join("");
 }
@@ -248,7 +251,7 @@ function table(
 function runTable(data, pager = true) {
   const rows = data.items.map(
     (run) =>
-      `<tr>${isAdmin ? `<td><strong>${escapeHTML(run.username)}</strong></td>` : ""}<td><strong>${escapeHTML(run.nickname || "微博用户")}</strong><span class="secondary-text mono">${escapeHTML(run.uid)}</span></td><td class="mono">${formatTime(run.started_at)}</td><td>${badge(run.status)}</td><td><span class="mono">${run.done_before} / ${run.success} / ${run.failed}</span><span class="secondary-text">已签 / 新签 / 失败 · 共 ${run.total}</span></td><td>${run.trigger === "scheduled" ? "定时" : "手动"}</td>${pager ? `<td class="wrap muted">${escapeHTML(run.message)}</td>` : ""}</tr>`,
+      `<tr>${isAdmin ? `<td><strong>${escapeHTML(run.username)}</strong></td>` : ""}<td><strong>${escapeHTML(run.nickname || "微博用户")}</strong><span class="secondary-text mono">${escapeHTML(run.uid)}</span></td><td class="mono">${formatTime(run.started_at)}</td><td>${badge(run.status)}</td><td><span class="mono">${run.done_before} / ${run.success} / ${run.failed}</span><span class="secondary-text">已签 / 新签 / 失败 · 共 ${run.total}</span></td><td>${run.trigger === "scheduled" ? "定时" : "手动"}</td>${pager ? `<td class="wrap muted">${escapeHTML(run.message)}</td>` : ""}<td>${creditForm({ kind: "run-topics", runId: run.id })}</td></tr>`,
   );
   return table(
     [
@@ -259,6 +262,7 @@ function runTable(data, pager = true) {
       "超话数量",
       "触发",
       ...(pager ? ["说明"] : []),
+      "超话明细",
     ],
     rows,
     data,
@@ -282,7 +286,34 @@ async function loadWorkspace(sequence) {
   accountsCache = accounts.accounts;
   workspaceDay = today();
   $("main").innerHTML =
-    `<section>${heading("我的工作台", "账号、计划与结果，一处查看。", addButton())}<div id="workspace-stats" class="stats">${workspaceStats(stats)}</div><div class="workspace-grid"><div class="stack"><div class="card"><div class="card-heading"><div><h2>我的微博 <span class="badge" id="account-count">${accountsCache.length} 个</span></h2><p>一个平台账号，可以连接多个微博。</p></div>${icon("users")}</div><div class="account-list" id="account-list">${accountRows(accountsCache)}</div></div><div class="card"><div class="card-heading"><div><h2>最近签到</h2><p>最近 5 次账号执行记录</p></div><a class="button ghost small" href="#runs">查看全部 →</a></div><div id="recent-runs">${runTable(runs, false)}</div></div></div><div class="stack">${planCard(settings.plan)}<div class="card info-card"><h3>${icon("shield")}登录状态维护</h3><p>服务每 6 小时检测微博登录。登录失效后，重新扫码即可更新原绑定，不会新增重复账号。</p><div class="info-row"><span class="muted">账号归属</span><span>每个微博仅归属一人</span></div><div class="info-row"><span class="muted">微博密码</span><span>无需提供或保存</span></div></div></div></div><div class="card section-gap">${creditForm({ kind: "calendar", accounts: accountsCache.map(({ id, uid, nickname }) => ({ id, uid, nickname })) })}</div>${footer()}</section>`;
+    `<section>${heading("我的工作台", "账号、计划与结果，一处查看。", addButton())}<div id="workspace-stats" class="stats">${workspaceStats(stats)}</div><div class="workspace-grid"><div class="stack"><div class="card"><div class="card-heading"><div><h2>我的微博 <span class="badge" id="account-count">${accountsCache.length} 个</span></h2><p>一个平台账号，可以连接多个微博。</p></div>${icon("users")}</div><div class="account-list" id="account-list">${accountRows(accountsCache)}</div></div><div class="card"><div class="card-heading"><div><h2>最近签到</h2><p>最近 5 次账号执行记录</p></div><a class="button ghost small" href="#runs">查看全部 →</a></div><div id="recent-runs">${runTable(runs, false)}</div></div></div><div class="stack">${planCard(settings.plan)}<div class="card info-card"><h3>${icon("shield")}登录状态维护</h3><p>服务每 6 小时检测微博登录。登录失效后，重新扫码即可更新原绑定，不会新增重复账号。</p><div class="info-row"><span class="muted">账号归属</span><span>每个微博仅归属一人</span></div><div class="info-row"><span class="muted">微博密码</span><span>无需提供或保存</span></div></div></div></div><div class="card section-gap">${creditForm({ kind: "topics", accounts: accountsCache.map(({ id, uid, nickname }) => ({ id, uid, nickname })) })}</div><div class="card section-gap">${creditForm({ kind: "calendar", accounts: accountsCache.map(({ id, uid, nickname }) => ({ id, uid, nickname })) })}</div>${footer()}</section>`;
+}
+function refreshRunTable(container, data) {
+  // Keep existing React islands mounted while the surrounding totals update.
+  const ids = new Set(data.items.map((run) => run.id));
+  const retained = new Map();
+  const focused = container.contains(document.activeElement)
+    ? document.activeElement
+    : null;
+  container
+    .querySelectorAll('[data-credit-form="run-topics"]')
+    .forEach((host) => {
+      const { runId } = JSON.parse(host.dataset.props);
+      if (ids.has(runId)) {
+        retained.set(runId, host);
+        host.remove();
+      }
+    });
+  unmountControls(container);
+  container.innerHTML = runTable(data, false);
+  container
+    .querySelectorAll('[data-credit-form="run-topics"]')
+    .forEach((host) => {
+      const { runId } = JSON.parse(host.dataset.props);
+      if (retained.has(runId)) host.replaceWith(retained.get(runId));
+    });
+  mountControls(container);
+  if (focused?.isConnected) focused.focus({ preventScroll: true });
 }
 async function loadSettings(sequence) {
   const data = await api("/api/settings");
@@ -372,7 +403,7 @@ async function loadRecords(type, sequence) {
 async function loadUsers(sequence) {
   const search = filters.users?.search || "";
   $("main").innerHTML =
-    `<section>${heading("用户列表", "查看平台用户、微博绑定数量和计划状态。", refreshButton())}<div class="card"><div class="card-heading"><h2>平台用户</h2><span class="badge">只读监控</span></div>${creditForm({ kind: "users", search })}<div id="records-table"><div class="loading-line">正在加载用户…</div></div></div>${footer()}</section>`;
+    `<section>${heading("用户列表", "创建平台用户，查看微博绑定数量和计划状态。", refreshButton())}<div class="card"><div class="card-heading"><h2>平台用户</h2></div>${creditForm({ kind: "users", search })}<div id="records-table"><div class="loading-line">正在加载用户…</div></div></div>${footer()}</section>`;
   const data = await api(
     `/api/admin/users?page=${pages.users || 1}&search=${encodeURIComponent(search)}`,
   );
@@ -389,6 +420,12 @@ async function loadUsers(sequence) {
       emptyDescription: "试试其他用户名关键词。",
     },
   );
+}
+async function loadSystemSettings(sequence) {
+  const data = await api("/api/admin/settings");
+  if (sequence !== renderId) return;
+  $("main").innerHTML =
+    `<section>${heading("系统设置", "管理平台的账号注册方式。")}<div class="settings-grid"><div class="card"><div class="card-heading"><h2>用户注册</h2></div><div class="settings-form">${creditForm({ kind: "system-settings", settings: data.settings })}</div></div></div>${footer()}</section>`;
 }
 function anomalyTable(items, pager = false, data = {}) {
   return table(
@@ -442,6 +479,7 @@ async function render() {
     if (view === "home") await loadWorkspace(sequence);
     else if (view === "settings") await loadSettings(sequence);
     else if (view === "users") await loadUsers(sequence);
+    else if (view === "system-settings") await loadSystemSettings(sequence);
     else if (view === "overview") await loadOverview(sequence);
     else if (view === "anomalies") await loadAnomalies(sequence);
     else await loadRecords(view, sequence);
@@ -468,7 +506,7 @@ async function refreshLive() {
     if ($("account-count"))
       $("account-count").textContent = `${accountsCache.length} 个`;
     $("workspace-stats").innerHTML = workspaceStats(stats);
-    $("recent-runs").innerHTML = runTable(runs, false);
+    refreshRunTable($("recent-runs"), runs);
     document.dispatchEvent(
       new CustomEvent("credit:calendar-refresh", {
         detail: {
@@ -593,6 +631,13 @@ $("app").addEventListener("click", async (event) => {
     updateSidebarToggle();
     return;
   }
+  if (action === "topics") {
+    document.dispatchEvent(
+      new CustomEvent("credit:topics-select", { detail: { id } }),
+    );
+    $("followed-topics")?.scrollIntoView({ block: "start" });
+    return;
+  }
   if (action === "bind") {
     await startQR();
     return;
@@ -662,6 +707,12 @@ $("app").addEventListener("credit:plan-saved", (event) => {
     $("plan-state").className = `badge ${plan.enabled ? "valid" : ""}`;
   }
   toast("签到计划已保存");
+});
+$("app").addEventListener("credit:user-created", async (event) => {
+  filters.users = { search: event.detail.username };
+  pages.users = 1;
+  toast("用户已创建");
+  if (view === "users") await render();
 });
 window.addEventListener("hashchange", render);
 async function initialize() {

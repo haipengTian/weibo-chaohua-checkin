@@ -42,7 +42,11 @@ class FakeWeibo:
             return [], 0, 0
         if mode == "partial_page":
             self.scan["complete"] = False
-        return [{"name": "测试超话", "scheme": "/safe"}], 1, 2
+        self.scan["topics"] = [
+            {"name": "音乐分享", "status": "done"},
+            {"name": "测试超话", "status": "pending"},
+        ]
+        return [{"name": "测试超话", "scheme": "/safe", "topic_index": 1}], 1, 2
 
     def sign(self, item):
         self.cookies["renewed"] = "yes"

@@ -31,6 +31,10 @@ CREATE TABLE IF NOT EXISTS accounts (
  created_at REAL NOT NULL, last_checked REAL NOT NULL DEFAULT 0,
  last_success_date TEXT NOT NULL DEFAULT '', credential_version INTEGER NOT NULL DEFAULT 1);
 CREATE INDEX IF NOT EXISTS accounts_owner ON accounts(owner_id);
+CREATE TABLE IF NOT EXISTS topic_scans (
+ account_id TEXT PRIMARY KEY REFERENCES accounts(id), credential_version INTEGER NOT NULL,
+ scanned_at REAL NOT NULL DEFAULT 0, day TEXT NOT NULL DEFAULT '',
+ complete INTEGER NOT NULL DEFAULT 0, status TEXT NOT NULL, topics TEXT NOT NULL DEFAULT '[]');
 CREATE TABLE IF NOT EXISTS runs (
  id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id),
  account_id TEXT NOT NULL REFERENCES accounts(id), trigger TEXT NOT NULL,
@@ -43,6 +47,9 @@ CREATE UNIQUE INDEX IF NOT EXISTS runs_one_active ON runs(account_id)
 CREATE INDEX IF NOT EXISTS runs_time ON runs(started_at DESC);
 CREATE INDEX IF NOT EXISTS runs_owner_day ON runs(user_id,day);
 CREATE INDEX IF NOT EXISTS runs_account_day ON runs(account_id,day);
+CREATE TABLE IF NOT EXISTS run_topics (
+ run_id TEXT NOT NULL REFERENCES runs(id), position INTEGER NOT NULL,
+ name TEXT NOT NULL, status TEXT NOT NULL, PRIMARY KEY(run_id,position));
 CREATE TABLE IF NOT EXISTS logs (
  id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT REFERENCES users(id),
  account_id TEXT, kind TEXT NOT NULL, status TEXT NOT NULL, message TEXT NOT NULL, ts REAL NOT NULL);
@@ -54,6 +61,10 @@ CREATE TABLE IF NOT EXISTS metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 
 class BindingConflict(ValueError):
     """UID 已有其他所有者。"""
+
+
+class RegistrationClosed(ValueError):
+    """公开注册已关闭。"""
 
 
 def new_id():
@@ -109,10 +120,20 @@ class Database:
             raise ValueError("首次启动需配置 PANEL_USER 与 12–128 位 PANEL_PASSWORD")
         self.create_user(username, password, role="admin")
 
-    def create_user(self, username, password, *, role="user"):
+    def create_user(
+        self,
+        username,
+        password,
+        *,
+        role="user",
+        self_registration=False,
+        created_by=None,
+    ):
         validate_username(username)
         user_id, now, encoded = new_id(), time.time(), hash_password(password)
         with self.connect(write=True) as conn:
+            if self_registration and not self._registration_enabled(conn):
+                raise RegistrationClosed("注册已关闭，请联系管理员开通账号")
             conn.execute(
                 "INSERT INTO users VALUES (?,?,?,?,?,?)",
                 (user_id, username, username.casefold(), encoded, role, now),
@@ -120,8 +141,43 @@ class Database:
             conn.execute(
                 "INSERT INTO plans(owner_id,updated_at) VALUES (?,?)", (user_id, now)
             )
-            self._log(conn, user_id, None, "auth", "success", "创建平台账号")
+            self._log(
+                conn,
+                created_by or user_id,
+                None,
+                "auth",
+                "success",
+                f"管理员创建平台用户：{username}" if created_by else "创建平台账号",
+            )
         return self.user(user_id)
+
+    @staticmethod
+    def _registration_enabled(conn):
+        row = conn.execute(
+            "SELECT value FROM metadata WHERE key='registration_enabled'"
+        ).fetchone()
+        return row is None or row["value"] == "true"
+
+    def system_settings(self):
+        with self.connect() as conn:
+            return {"registration_enabled": self._registration_enabled(conn)}
+
+    def set_system_settings(self, registration_enabled, actor_id):
+        with self.connect(write=True) as conn:
+            conn.execute(
+                "INSERT INTO metadata(key,value) VALUES ('registration_enabled',?) "
+                "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                ("true" if registration_enabled else "false",),
+            )
+            self._log(
+                conn,
+                actor_id,
+                None,
+                "system",
+                "success",
+                "开启公开注册" if registration_enabled else "关闭公开注册",
+            )
+        return {"registration_enabled": registration_enabled}
 
     def user(self, user_id):
         with self.connect() as conn:
@@ -274,6 +330,102 @@ class Database:
                     "EXISTS(SELECT 1 FROM runs WHERE account_id=a.id AND status IN ('queued','running')) AS busy "
                     "FROM accounts a WHERE a.owner_id=? ORDER BY a.created_at",
                     (owner_id,),
+                )
+            ]
+
+    def topic_scan(self, account_id, today):
+        with self.connect() as conn:
+            row = conn.execute(
+                "SELECT s.*,a.credential_version AS current_version FROM topic_scans s "
+                "JOIN accounts a ON a.id=s.account_id WHERE s.account_id=?",
+                (account_id,),
+            ).fetchone()
+        if not row:
+            return {
+                "items": [],
+                "status": "unscanned",
+                "scanned_at": 0,
+                "complete": False,
+                "fresh": False,
+            }
+        fresh = (
+            row["day"] == today and row["credential_version"] == row["current_version"]
+        )
+        items = json.loads(row["topics"])
+        if not fresh:
+            items = [{**item, "status": "unknown"} for item in items]
+        return {
+            "items": items,
+            "status": row["status"],
+            "scanned_at": row["scanned_at"],
+            "complete": bool(row["complete"]),
+            "fresh": fresh,
+        }
+
+    def mark_topic_scan(self, acc, status):
+        with self.connect(write=True) as conn:
+            current = conn.execute(
+                "SELECT credential_version FROM accounts WHERE id=?", (acc["id"],)
+            ).fetchone()
+            if not current or current[0] != acc["credential_version"]:
+                return
+            conn.execute(
+                "INSERT INTO topic_scans(account_id,credential_version,status) VALUES (?,?,?) "
+                "ON CONFLICT(account_id) DO UPDATE SET status=excluded.status",
+                (acc["id"], acc["credential_version"], status),
+            )
+
+    def save_topic_scan(self, acc, topics, complete, day):
+        with self.connect(write=True) as conn:
+            current = conn.execute(
+                "SELECT credential_version FROM accounts WHERE id=?", (acc["id"],)
+            ).fetchone()
+            if not current or current[0] != acc["credential_version"]:
+                return
+            conn.execute(
+                "INSERT INTO topic_scans VALUES (?,?,?,?,?,?,?) ON CONFLICT(account_id) "
+                "DO UPDATE SET credential_version=excluded.credential_version,scanned_at=excluded.scanned_at,"
+                "day=excluded.day,complete=excluded.complete,status=excluded.status,topics=excluded.topics",
+                (
+                    acc["id"],
+                    acc["credential_version"],
+                    time.time(),
+                    day,
+                    bool(complete),
+                    "success" if complete else "partial",
+                    json.dumps(topics, ensure_ascii=False),
+                ),
+            )
+
+    def save_run_topics(self, run_id, topics):
+        with self.connect(write=True) as conn:
+            conn.executemany(
+                "INSERT INTO run_topics(run_id,position,name,status) VALUES (?,?,?,?)",
+                [
+                    (
+                        run_id,
+                        index,
+                        item["name"],
+                        "done_before" if item["status"] == "done" else item["status"],
+                    )
+                    for index, item in enumerate(topics)
+                ],
+            )
+
+    def set_run_topic(self, run_id, position, status):
+        with self.connect(write=True) as conn:
+            conn.execute(
+                "UPDATE run_topics SET status=? WHERE run_id=? AND position=?",
+                (status, run_id, position),
+            )
+
+    def run_topics(self, run_id):
+        with self.connect() as conn:
+            return [
+                dict(row)
+                for row in conn.execute(
+                    "SELECT name,status FROM run_topics WHERE run_id=? ORDER BY position",
+                    (run_id,),
                 )
             ]
 

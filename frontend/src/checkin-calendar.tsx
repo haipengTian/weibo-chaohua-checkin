@@ -11,6 +11,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Choice } from "./fields";
+import { RunTopics } from "./topics";
 import "./checkin-calendar.css";
 
 export type CalendarAccount = { id: string; uid: string; nickname: string };
@@ -73,7 +74,11 @@ function useResource<T>(url: string, revision: number) {
   useEffect(() => {
     if (!url) return;
     const controller = new AbortController();
-    setState({ url, loading: true });
+    setState((current) => ({
+      url,
+      data: current.url === url ? current.data : undefined,
+      loading: true,
+    }));
     (async () => {
       try {
         const response = await fetch(url, { signal: controller.signal });
@@ -91,14 +96,15 @@ function useResource<T>(url: string, revision: number) {
         if (!controller.signal.aborted) setState({ url, data, loading: false });
       } catch (error) {
         if (!controller.signal.aborted)
-          setState({
+          setState((current) => ({
             url,
+            data: current.url === url ? current.data : undefined,
             error:
               error instanceof TypeError
                 ? "无法连接服务，请稍后重试"
                 : (error as Error).message,
             loading: false,
-          });
+          }));
       }
     })();
     return () => controller.abort();
@@ -411,6 +417,7 @@ export function CheckinCalendar({
                           </time>
                         </div>
                         <p>{run.message}</p>
+                        <RunTopics runId={run.id} />
                         <small>
                           {run.trigger === "scheduled"
                             ? "定时签到"

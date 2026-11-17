@@ -35,6 +35,7 @@ class Runner:
         self.db, self.client_factory, self.sign_delay = db, client_factory, sign_delay
         self.pool = ThreadPoolExecutor(max_workers=4, thread_name_prefix="checkin")
         self.account_locks = {}
+        self.topic_scans_pending = set()
         self.lock = threading.Lock()
 
     def account_lock(self, account_id):
@@ -43,6 +44,9 @@ class Runner:
 
     def recover(self):
         with self.db.connect(write=True) as conn:
+            conn.execute(
+                "UPDATE topic_scans SET status='error' WHERE status='scanning'"
+            )
             rows = conn.execute(
                 "SELECT user_id,account_id FROM runs WHERE status IN ('queued','running')"
             ).fetchall()
@@ -109,6 +113,86 @@ class Runner:
     def submit(self, run):
         self.pool.submit(self.execute, run["id"])
 
+    @staticmethod
+    def topic_items(client, pending):
+        # 真实客户端提供全部超话；旧测试替身/调用方仍可只提供待签列表。
+        return [
+            dict(item)
+            for item in client.scan.get(
+                "topics",
+                [
+                    {"name": item.get("name") or "未返回超话名称", "status": "pending"}
+                    for item in pending
+                ],
+            )
+        ]
+
+    def submit_topic_scan(self, account):
+        key = (account["id"], account["credential_version"])
+        with self.lock:
+            if key in self.topic_scans_pending:
+                return
+            self.topic_scans_pending.add(key)
+        self.db.mark_topic_scan(account, "scanning")
+        self.pool.submit(self._background_topic_scan, account, key)
+
+    def _background_topic_scan(self, account, key):
+        try:
+            self.scan_topics(account, wait=True)
+        finally:
+            with self.lock:
+                self.topic_scans_pending.discard(key)
+
+    def scan_topics(self, account, *, wait=False):
+        guard = self.account_lock(account["id"])
+        if not guard.acquire(blocking=wait):
+            return {"status": "busy"}
+        client, login_status = None, "error"
+        try:
+            account = self.db.account(account["id"])
+            self.db.mark_topic_scan(account, "scanning")
+            client = self.client_factory(account["cookies"])
+            info = client.login_info()
+            if not info["login"] or str(info.get("uid")) != account["uid"]:
+                login_status = "expired"
+                self.db.mark_topic_scan(account, "expired")
+            else:
+                login_status = "valid"
+                scan_day = dt.datetime.now(SHANGHAI).date().isoformat()
+                pending, _, _ = client.fetch_topics()
+                self.db.save_topic_scan(
+                    account,
+                    self.topic_items(client, pending),
+                    client.scan.get("complete", False),
+                    scan_day,
+                )
+        except Exception:
+            login_status = "error"
+            self.db.save_login(account, "error")
+            self.db.mark_topic_scan(account, "error")
+        finally:
+            try:
+                if client:
+                    try:
+                        self.db.save_login(
+                            account, login_status, client.export_cookies()
+                        )
+                    finally:
+                        client.close()
+            finally:
+                guard.release()
+        scan = self.db.topic_scan(
+            account["id"], dt.datetime.now(SHANGHAI).date().isoformat()
+        )
+        self.db.log(
+            account["owner_id"],
+            account["id"],
+            "topic_scan",
+            scan["status"],
+            "读取关注超话" if scan["status"] == "success" else "关注超话扫描未完整完成",
+        )
+        return scan
+
     def check(self, account):
         if not self.account_lock(account["id"]).acquire(blocking=False):
             return {"status": "busy", "message": "该账号正在执行任务"}
@@ -143,7 +227,7 @@ class Runner:
         run = self.db.run(run_id)
         acc = self.db.account(run["account_id"])
         counts = {"total": 0, "done_before": 0, "success": 0, "failed": 0, "unknown": 0}
-        client, status = None, "failed"
+        client, status, topic_rows = None, "failed", None
         with self.account_lock(acc["id"]):
             try:
                 if dt.datetime.now(SHANGHAI).date().isoformat() != run["day"]:
@@ -158,6 +242,8 @@ class Runner:
                 else:
                     self.db.save_login(acc, "valid", client.export_cookies())
                     pending, done, total = client.fetch_topics()
+                    topic_rows = self.topic_items(client, pending)
+                    self.db.save_run_topics(run_id, topic_rows)
                     counts.update(
                         total=total,
                         done_before=done,
@@ -170,8 +256,16 @@ class Runner:
                             ok, _ = client.sign(item)
                         except Exception:
                             counts["failed"] += 1
+                            position = item.get("topic_index", index)
+                            self.db.set_run_topic(run_id, position, "network_error")
+                            topic_rows[position]["status"] = "unknown"
                             raise
                         counts["success" if ok else "failed"] += 1
+                        position = item.get("topic_index", index)
+                        self.db.set_run_topic(
+                            run_id, position, "success" if ok else "failed"
+                        )
+                        topic_rows[position]["status"] = "done" if ok else "failed"
                         if index + 1 < len(pending):
                             time.sleep(self.sign_delay)
                     complete = client.scan.get("complete", False)
@@ -196,6 +290,13 @@ class Runner:
             finally:
                 if client:
                     try:
+                        if topic_rows is not None:
+                            self.db.save_topic_scan(
+                                acc,
+                                topic_rows,
+                                client.scan.get("complete", False),
+                                run["day"],
+                            )
                         # Even error responses may rotate cookies. Never discard a refresh.
                         self.db.save_login(
                             acc,
