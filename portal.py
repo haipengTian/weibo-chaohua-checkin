@@ -2,6 +2,7 @@
 
 import datetime as dt
 import os
+import re
 import secrets
 import sqlite3
 import threading
@@ -17,6 +18,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from portal_db import (
+    AccountBusy,
     BindingConflict,
     Database,
     RegistrationClosed,
@@ -25,7 +27,7 @@ from portal_db import (
 )
 from portal_runtime import service_lock
 from portal_security import DUMMY_PASSWORD, verify_password
-from portal_tasks import SHANGHAI, AlreadyCheckedIn, Runner
+from portal_tasks import SHANGHAI, Runner
 from portal_weibo import PortalQR, PortalWeibo
 
 ROOT = Path(__file__).resolve().parent
@@ -62,6 +64,21 @@ class PlanBody(BaseModel):
 class SystemSettingsBody(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
     registration_enabled: bool
+
+
+class TopicPreferencesBody(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    mode: str = Field(pattern=r"^(all|selected)$")
+    topic_ids: list[str] = Field(max_length=5000)
+
+    @field_validator("topic_ids")
+    @classmethod
+    def valid_ids(cls, values):
+        if any(
+            not re.fullmatch(r"100808[0-9a-zA-Z]{1,128}", value) for value in values
+        ):
+            raise ValueError("超话标识无效，请刷新关注列表")
+        return values
 
 
 def create_app(
@@ -340,7 +357,7 @@ def create_app(
         rate("checkin:" + user["id"], 10, 60)
         try:
             run = app.state.runner.claim(account, "manual")
-        except AlreadyCheckedIn as error:
+        except ValueError as error:
             raise HTTPException(409, str(error)) from None
         if not run:
             raise HTTPException(409, "该微博账号正在签到，请等待完成")
@@ -353,8 +370,25 @@ def create_app(
         return {
             "scan": app.state.db.topic_scan(
                 account_id, dt.datetime.now(SHANGHAI).date().isoformat()
-            )
+            ),
+            "selection": app.state.db.topic_preferences(account_id),
         }
+
+    @app.put("/api/accounts/{account_id}/topics/selection")
+    def save_topic_selection(
+        account_id: str, body: TopicPreferencesBody, user=Depends(current_user)
+    ):
+        account_for(user, account_id)
+        rate("topic_settings:" + user["id"], 30, 60)
+        try:
+            selection = app.state.db.set_topic_preferences(
+                account_id, body.mode, body.topic_ids
+            )
+        except AccountBusy as error:
+            raise HTTPException(409, str(error)) from None
+        except ValueError as error:
+            raise HTTPException(400, str(error)) from None
+        return {"selection": selection}
 
     @app.post("/api/accounts/{account_id}/topics/refresh")
     def refresh_topics(account_id: str, user=Depends(current_user)):
@@ -363,7 +397,7 @@ def create_app(
         result = app.state.runner.scan_topics(account)
         if result["status"] == "busy":
             raise HTTPException(409, "该账号正在处理任务，请稍后刷新超话")
-        return {"scan": result}
+        return {"scan": result, "selection": app.state.db.topic_preferences(account_id)}
 
     @app.get("/api/runs/{run_id}/topics")
     def run_topic_details(run_id: str, user=Depends(current_user)):

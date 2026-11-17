@@ -50,6 +50,11 @@ CREATE INDEX IF NOT EXISTS runs_account_day ON runs(account_id,day);
 CREATE TABLE IF NOT EXISTS run_topics (
  run_id TEXT NOT NULL REFERENCES runs(id), position INTEGER NOT NULL,
  name TEXT NOT NULL, status TEXT NOT NULL, PRIMARY KEY(run_id,position));
+CREATE TABLE IF NOT EXISTS topic_preferences (
+ account_id TEXT PRIMARY KEY REFERENCES accounts(id), mode TEXT NOT NULL,
+ topic_ids TEXT NOT NULL DEFAULT '[]', revision INTEGER NOT NULL DEFAULT 0);
+CREATE TABLE IF NOT EXISTS run_scopes (
+ run_id TEXT PRIMARY KEY REFERENCES runs(id), scope TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS logs (
  id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT REFERENCES users(id),
  account_id TEXT, kind TEXT NOT NULL, status TEXT NOT NULL, message TEXT NOT NULL, ts REAL NOT NULL);
@@ -65,6 +70,10 @@ class BindingConflict(ValueError):
 
 class RegistrationClosed(ValueError):
     """公开注册已关闭。"""
+
+
+class AccountBusy(ValueError):
+    """签到中的账号不能修改签到范围。"""
 
 
 def new_id():
@@ -325,7 +334,10 @@ class Database:
                 for row in conn.execute(
                     "SELECT a.id,a.uid,a.nickname,a.login_status,a.created_at,a.last_checked,"
                     "max(a.last_success_date,coalesce((SELECT max(day) FROM runs "
-                    "WHERE account_id=a.id AND status='success'),'')) AS last_success_date,"
+                    "WHERE account_id=a.id AND status='success' AND "
+                    "coalesce((SELECT scope FROM run_scopes WHERE run_id=runs.id),'all')="
+                    "coalesce((SELECT CASE WHEN mode='all' THEN 'all' ELSE topic_ids END FROM topic_preferences WHERE account_id=a.id),'all')),'')) AS last_success_date,"
+                    "coalesce((SELECT mode='selected' AND topic_ids='[]' FROM topic_preferences WHERE account_id=a.id),0) AS topics_paused,"
                     "(SELECT status FROM runs WHERE account_id=a.id ORDER BY started_at DESC LIMIT 1) AS last_result,"
                     "EXISTS(SELECT 1 FROM runs WHERE account_id=a.id AND status IN ('queued','running')) AS busy "
                     "FROM accounts a WHERE a.owner_id=? ORDER BY a.created_at",
@@ -361,6 +373,74 @@ class Database:
             "complete": bool(row["complete"]),
             "fresh": fresh,
         }
+
+    @staticmethod
+    def _topic_preferences(conn, account_id):
+        row = conn.execute(
+            "SELECT * FROM topic_preferences WHERE account_id=?", (account_id,)
+        ).fetchone()
+        return (
+            {
+                "mode": row["mode"],
+                "topic_ids": json.loads(row["topic_ids"]),
+                "revision": row["revision"],
+            }
+            if row
+            else {"mode": "all", "topic_ids": [], "revision": 0}
+        )
+
+    @staticmethod
+    def selection_scope(selection):
+        return (
+            "all"
+            if selection["mode"] == "all"
+            else json.dumps(sorted(set(selection["topic_ids"])))
+        )
+
+    def topic_preferences(self, account_id):
+        with self.connect() as conn:
+            return self._topic_preferences(conn, account_id)
+
+    def set_topic_preferences(self, account_id, mode, topic_ids):
+        ids = sorted(set(topic_ids)) if mode == "selected" else []
+        with self.connect(write=True) as conn:
+            if conn.execute(
+                "SELECT 1 FROM runs WHERE account_id=? AND status IN ('queued','running')",
+                (account_id,),
+            ).fetchone():
+                raise AccountBusy("该账号正在签到，请完成后再修改签到范围")
+            previous = self._topic_preferences(conn, account_id)
+            if previous["mode"] == mode and sorted(previous["topic_ids"]) == ids:
+                return previous
+            scan = conn.execute(
+                "SELECT topics FROM topic_scans WHERE account_id=?", (account_id,)
+            ).fetchone()
+            known = {item.get("id") for item in json.loads(scan[0])} if scan else set()
+            if not set(ids) <= known | set(previous["topic_ids"]):
+                raise ValueError("部分超话不在已读取的关注列表中，请刷新后重试")
+            revision = previous["revision"] + 1
+            conn.execute(
+                "INSERT INTO topic_preferences VALUES (?,?,?,?) ON CONFLICT(account_id) "
+                "DO UPDATE SET mode=excluded.mode,topic_ids=excluded.topic_ids,revision=excluded.revision",
+                (account_id, mode, json.dumps(ids), revision),
+            )
+            conn.execute(
+                "UPDATE accounts SET last_success_date='' WHERE id=?", (account_id,)
+            )
+            owner = conn.execute(
+                "SELECT owner_id FROM accounts WHERE id=?", (account_id,)
+            ).fetchone()[0]
+            self._log(
+                conn,
+                owner,
+                account_id,
+                "topic_settings",
+                "success",
+                "签到范围：全部关注超话"
+                if mode == "all"
+                else f"签到范围：指定 {len(ids)} 个超话",
+            )
+        return {"mode": mode, "topic_ids": ids, "revision": revision}
 
     def mark_topic_scan(self, acc, status):
         with self.connect(write=True) as conn:

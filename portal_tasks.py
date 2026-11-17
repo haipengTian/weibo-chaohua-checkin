@@ -70,12 +70,19 @@ class Runner:
         day, run_id = now.date().isoformat(), new_id()
         try:
             with self.db.connect(write=True) as conn:
+                selection = self.db._topic_preferences(conn, account["id"])
+                if selection["mode"] == "selected" and not selection["topic_ids"]:
+                    if trigger == "manual":
+                        raise ValueError("尚未选择签到超话，请先在关注超话中选择并保存")
+                    return None
+                scope = self.db.selection_scope(selection)
                 # Read inside the claim transaction, never trust the caller's snapshot.
                 row = conn.execute(
                     "SELECT a.last_success_date,p.enabled,p.time,"
-                    "EXISTS(SELECT 1 FROM runs WHERE account_id=a.id AND day=? AND status='success') AS day_success "
+                    "EXISTS(SELECT 1 FROM runs WHERE account_id=a.id AND day=? AND status='success' "
+                    "AND coalesce((SELECT scope FROM run_scopes WHERE run_id=runs.id),'all')=?) AS day_success "
                     "FROM accounts a JOIN plans p ON p.owner_id=a.owner_id WHERE a.id=?",
-                    (day, account["id"]),
+                    (day, scope, account["id"]),
                 ).fetchone()
                 if not row:
                     return None
@@ -88,8 +95,8 @@ class Runner:
                         return None
                     attempts = conn.execute(
                         "SELECT count(*),max(coalesce(finished_at,started_at)) FROM runs WHERE account_id=? AND day=? "
-                        "AND trigger='scheduled'",
-                        (account["id"], day),
+                        "AND trigger='scheduled' AND coalesce((SELECT scope FROM run_scopes WHERE run_id=runs.id),'all')=?",
+                        (account["id"], day, scope),
                     ).fetchone()
                     if attempts[0] >= 3 or (
                         attempts[1] is not None and now.timestamp() - attempts[1] < 600
@@ -105,6 +112,10 @@ class Runner:
                         day,
                         now.timestamp(),
                     ),
+                )
+                conn.execute(
+                    "INSERT INTO run_scopes VALUES (?,?)",
+                    (run_id, scope),
                 )
         except sqlite3.IntegrityError:
             return None
@@ -227,7 +238,7 @@ class Runner:
         run = self.db.run(run_id)
         acc = self.db.account(run["account_id"])
         counts = {"total": 0, "done_before": 0, "success": 0, "failed": 0, "unknown": 0}
-        client, status, topic_rows = None, "failed", None
+        client, status, scan_rows = None, "failed", None
         with self.account_lock(acc["id"]):
             try:
                 if dt.datetime.now(SHANGHAI).date().isoformat() != run["day"]:
@@ -242,12 +253,49 @@ class Runner:
                 else:
                     self.db.save_login(acc, "valid", client.export_cookies())
                     pending, done, total = client.fetch_topics()
-                    topic_rows = self.topic_items(client, pending)
+                    scan_rows = self.topic_items(client, pending)
+                    selection = self.db.topic_preferences(acc["id"])
+                    selected = set(selection["topic_ids"])
+                    positions = [
+                        index
+                        for index, item in enumerate(scan_rows)
+                        if selection["mode"] == "all" or item.get("id") in selected
+                    ]
+                    topic_rows = [dict(scan_rows[index]) for index in positions]
+                    position_map = {
+                        original: index for index, original in enumerate(positions)
+                    }
+                    pending = [
+                        {
+                            **item,
+                            "scan_index": item.get("topic_index", index),
+                            "topic_index": position_map[item.get("topic_index", index)],
+                        }
+                        for index, item in enumerate(pending)
+                        if item.get("topic_index", index) in position_map
+                    ]
+                    if selection["mode"] == "selected":
+                        found = {item.get("id") for item in topic_rows}
+                        cached = self.db.topic_scan(acc["id"], run["day"])["items"]
+                        names = {item.get("id"): item["name"] for item in cached}
+                        topic_rows += [
+                            {
+                                "name": names.get(
+                                    identifier, "未在关注列表中找到的已选超话"
+                                ),
+                                "status": "unknown",
+                            }
+                            for identifier in sorted(selected - found)
+                        ]
+                        total = len(topic_rows)
+                        done = sum(item["status"] == "done" for item in topic_rows)
                     self.db.save_run_topics(run_id, topic_rows)
                     counts.update(
                         total=total,
                         done_before=done,
-                        unknown=len(client.scan.get("unknown", [])),
+                        unknown=sum(item["status"] == "unknown" for item in topic_rows)
+                        if selection["mode"] == "selected"
+                        else len(client.scan.get("unknown", [])),
                     )
                     for index, item in enumerate(pending):
                         if dt.datetime.now(SHANGHAI).date().isoformat() != run["day"]:
@@ -258,14 +306,16 @@ class Runner:
                             counts["failed"] += 1
                             position = item.get("topic_index", index)
                             self.db.set_run_topic(run_id, position, "network_error")
-                            topic_rows[position]["status"] = "unknown"
+                            scan_rows[item["scan_index"]]["status"] = "unknown"
                             raise
                         counts["success" if ok else "failed"] += 1
                         position = item.get("topic_index", index)
                         self.db.set_run_topic(
                             run_id, position, "success" if ok else "failed"
                         )
-                        topic_rows[position]["status"] = "done" if ok else "failed"
+                        scan_rows[item["scan_index"]]["status"] = (
+                            "done" if ok else "failed"
+                        )
                         if index + 1 < len(pending):
                             time.sleep(self.sign_delay)
                     complete = client.scan.get("complete", False)
@@ -290,10 +340,10 @@ class Runner:
             finally:
                 if client:
                     try:
-                        if topic_rows is not None:
+                        if scan_rows is not None:
                             self.db.save_topic_scan(
                                 acc,
-                                topic_rows,
+                                scan_rows,
                                 client.scan.get("complete", False),
                                 run["day"],
                             )
@@ -343,9 +393,12 @@ class Runner:
                 for row in conn.execute(
                     "SELECT a.id FROM accounts a JOIN plans p ON p.owner_id=a.owner_id WHERE p.enabled=1 "
                     "AND p.time<=? AND a.last_success_date<>? "
+                    "AND NOT EXISTS(SELECT 1 FROM topic_preferences t WHERE t.account_id=a.id AND t.mode='selected' AND t.topic_ids='[]') "
                     "AND NOT EXISTS(SELECT 1 FROM runs r WHERE r.account_id=a.id AND r.status IN ('queued','running')) "
-                    "AND (SELECT count(*) FROM runs r WHERE r.account_id=a.id AND r.day=? AND r.trigger='scheduled')<3 "
-                    "AND NOT EXISTS(SELECT 1 FROM runs r WHERE r.account_id=a.id AND r.day=? AND r.trigger='scheduled' AND coalesce(r.finished_at,r.started_at)>?)",
+                    "AND (SELECT count(*) FROM runs r WHERE r.account_id=a.id AND r.day=? AND r.trigger='scheduled' "
+                    "AND coalesce((SELECT scope FROM run_scopes WHERE run_id=r.id),'all')=coalesce((SELECT CASE WHEN mode='all' THEN 'all' ELSE topic_ids END FROM topic_preferences WHERE account_id=a.id),'all'))<3 "
+                    "AND NOT EXISTS(SELECT 1 FROM runs r WHERE r.account_id=a.id AND r.day=? AND r.trigger='scheduled' AND coalesce(r.finished_at,r.started_at)>? "
+                    "AND coalesce((SELECT scope FROM run_scopes WHERE run_id=r.id),'all')=coalesce((SELECT CASE WHEN mode='all' THEN 'all' ELSE topic_ids END FROM topic_preferences WHERE account_id=a.id),'all'))",
                     (now.strftime("%H:%M"), day, day, day, now.timestamp() - 600),
                 )
             ]

@@ -34,7 +34,7 @@ def test_names_and_all_followed_statuses_are_collected(monkeypatch):
         assert client.scan["topics"] == [
             {"name": "周杰伦", "status": "pending"},
             {"name": "旅行 & 生活", "status": "done"},
-            {"name": "音乐分享", "status": "unknown"},
+            {"id": "100808abc", "name": "音乐分享", "status": "unknown"},
         ]
         assert (
             topic_name({"id": "123", "title_sub": "123", "title": "可读名称"})

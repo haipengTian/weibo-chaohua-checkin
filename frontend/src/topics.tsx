@@ -2,11 +2,18 @@ import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Check } from "lucide-react";
 import { Choice } from "./fields";
 import type { CalendarAccount } from "./checkin-calendar";
 import "./topics.css";
 
-type Topic = { name: string; status: string };
+type Topic = { id?: string; name: string; status: string };
+type Selection = {
+  mode: "all" | "selected";
+  topic_ids: string[];
+  revision: number;
+};
+type TopicsResponse = { scan: Scan; selection: Selection };
 type Scan = {
   items: Topic[];
   status: string;
@@ -77,6 +84,260 @@ function TopicList({
   );
 }
 
+function SelectableTopics({
+  accountId,
+  selection,
+  allItems,
+  items,
+  ready,
+}: {
+  accountId: string;
+  selection: Selection;
+  allItems: Topic[];
+  items: Topic[];
+  ready: boolean;
+}) {
+  // Keep each account's unsaved choices when switching accounts or refreshing scans.
+  const [drafts, setDrafts] = useState<Record<string, Selection>>({});
+  const [saved, setSaved] = useState<Record<string, Selection>>({});
+  const [feedback, setFeedback] = useState<
+    Record<string, { saving?: boolean; error?: string; message?: string }>
+  >({});
+  const base =
+    saved[accountId] && saved[accountId].revision > selection.revision
+      ? saved[accountId]
+      : selection;
+  const draft = drafts[accountId] || base;
+  const state = feedback[accountId] || {};
+  const selected = new Set(draft.topic_ids);
+  const dirty =
+    draft.mode !== base.mode ||
+    [...draft.topic_ids].sort().join(",") !==
+      [...base.topic_ids].sort().join(",");
+  function update(next: Selection) {
+    setDrafts((previous) => ({ ...previous, [accountId]: next }));
+    setFeedback((previous) => ({ ...previous, [accountId]: {} }));
+  }
+  function toggleVisible(checked: boolean) {
+    const next = new Set(selected);
+    items.forEach((item) => {
+      if (item.id) {
+        if (checked) next.add(item.id);
+        else next.delete(item.id);
+      }
+    });
+    update({ ...draft, topic_ids: [...next] });
+  }
+  async function save() {
+    setFeedback((previous) => ({ ...previous, [accountId]: { saving: true } }));
+    try {
+      const response = await fetch(
+        `/api/accounts/${encodeURIComponent(accountId)}/topics/selection`,
+        {
+          method: "PUT",
+          headers: {
+            "X-Requested-With": "WeiboPortal",
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            mode: draft.mode,
+            topic_ids: draft.mode === "all" ? [] : draft.topic_ids,
+          }),
+        },
+      );
+      if (response.status === 401) location.assign("/login");
+      const data = await response.json();
+      if (!response.ok)
+        throw new Error(
+          typeof data.detail === "string"
+            ? data.detail
+            : "保存失败，请稍后重试",
+        );
+      setSaved((previous) => ({ ...previous, [accountId]: data.selection }));
+      setDrafts((previous) => {
+        const next = { ...previous };
+        delete next[accountId];
+        return next;
+      });
+      setFeedback((previous) => ({
+        ...previous,
+        [accountId]: { message: "已保存，手动和定时签到均按此范围执行。" },
+      }));
+      document.dispatchEvent(new CustomEvent("credit:topics-saved"));
+    } catch (error) {
+      setFeedback((previous) => ({
+        ...previous,
+        [accountId]: {
+          error:
+            error instanceof TypeError
+              ? "无法连接服务，请稍后重试"
+              : (error as Error).message,
+        },
+      }));
+    }
+  }
+  const missing = draft.topic_ids.filter(
+    (id) => !allItems.some((topic) => topic.id === id),
+  ).length;
+  if (!ready) return null;
+  return (
+    <div className="topic-selection">
+      <div className="selection-settings">
+        <div className="credit-field">
+          <Label htmlFor="topic-mode">签到范围</Label>
+          <Choice
+            id="topic-mode"
+            label="签到范围"
+            value={draft.mode}
+            onChange={(mode) => {
+              if (!state.saving)
+                update({
+                  ...draft,
+                  mode: mode as Selection["mode"],
+                  topic_ids:
+                    mode === "selected" && draft.mode === "all"
+                      ? allItems.flatMap((topic) =>
+                          topic.id ? [topic.id] : [],
+                        )
+                      : draft.topic_ids,
+                });
+            }}
+            options={[
+              { value: "all", label: "全部关注超话" },
+              { value: "selected", label: "仅选中的超话" },
+            ]}
+          />
+        </div>
+        <div className="selection-actions">
+          {dirty && (
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              disabled={state.saving}
+              onClick={() => update(base)}
+            >
+              撤销修改
+            </Button>
+          )}
+          <Button
+            type="button"
+            size="sm"
+            disabled={!dirty || state.saving}
+            onClick={save}
+          >
+            {state.saving ? "正在保存…" : "保存签到范围"}
+          </Button>
+        </div>
+      </div>
+      <p className="topics-notice">
+        {draft.mode === "all"
+          ? "包含以后新关注的超话。"
+          : `已选 ${selected.size} 个；以后新关注的超话需手动勾选。`}
+        {draft.mode === "selected" &&
+          !selected.size &&
+          "未选择时暂停该微博的手动和定时签到。"}
+        {dirty && <strong> 有未保存的修改。</strong>}
+      </p>
+      {state.error && (
+        <p role="alert" className="credit-form-error">
+          {state.error}
+        </p>
+      )}
+      {state.message && (
+        <p role="status" className="selection-saved">
+          {state.message}
+        </p>
+      )}
+      {draft.mode === "selected" && (
+        <>
+          <div className="selection-bulk">
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={state.saving || !items.some((item) => item.id)}
+              onClick={() => toggleVisible(true)}
+            >
+              全选当前结果
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              disabled={state.saving || !items.some((item) => item.id)}
+              onClick={() => toggleVisible(false)}
+            >
+              取消当前结果
+            </Button>
+          </div>
+          {missing > 0 && (
+            <p className="topics-notice">
+              有 {missing} 个已选超话不在当前列表中，请刷新确认。
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                disabled={state.saving}
+                onClick={() =>
+                  update({
+                    ...draft,
+                    topic_ids: draft.topic_ids.filter((id) =>
+                      allItems.some((topic) => topic.id === id),
+                    ),
+                  })
+                }
+              >
+                移除未显示的选择
+              </Button>
+            </p>
+          )}
+        </>
+      )}
+      {items.length ? (
+        <ul className="topic-list">
+          {items.map((topic, index) => (
+            <li key={topic.id || index}>
+              {draft.mode === "selected" ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  className="topic-choice whitespace-normal h-auto justify-start"
+                  role="checkbox"
+                  aria-checked={!!topic.id && selected.has(topic.id)}
+                  aria-label={topic.name}
+                  disabled={!topic.id || state.saving}
+                  onClick={() => {
+                    const next = new Set(selected);
+                    if (next.has(topic.id!)) next.delete(topic.id!);
+                    else next.add(topic.id!);
+                    update({ ...draft, topic_ids: [...next] });
+                  }}
+                >
+                  <span className="topic-check" aria-hidden="true">
+                    {topic.id && selected.has(topic.id) && <Check size={14} />}
+                  </span>
+                  <span className="topic-name">
+                    {topic.name}
+                    {!topic.id && <small>缺少超话标识，请刷新后选择</small>}
+                  </span>
+                </Button>
+              ) : (
+                <span className="topic-name">{topic.name}</span>
+              )}
+              <span className={`topic-status ${topic.status}`}>
+                {labels[topic.status] || "待确认"}
+              </span>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="topics-empty">没有可显示的超话</p>
+      )}
+    </div>
+  );
+}
+
 export function FollowedTopics({
   accounts: initial,
 }: {
@@ -93,6 +354,7 @@ export function FollowedTopics({
   const [state, setState] = useState<{
     accountId: string;
     scan?: Scan;
+    selection?: Selection;
     loading: boolean;
     error?: string;
   }>({ accountId: "", loading: false });
@@ -112,17 +374,19 @@ export function FollowedTopics({
     setState((previous) => ({
       accountId,
       scan: previous.accountId === accountId ? previous.scan : undefined,
+      selection:
+        previous.accountId === accountId ? previous.selection : undefined,
       loading: true,
     }));
     const method = request.accountId === accountId ? request.method : "GET";
-    read<{ scan: Scan }>(
+    read<TopicsResponse>(
       `/api/accounts/${encodeURIComponent(accountId)}/topics${method === "POST" ? "/refresh" : ""}`,
       controller.signal,
       method,
     )
-      .then(({ scan }) => {
+      .then(({ scan, selection }) => {
         if (!controller.signal.aborted)
-          setState({ accountId, scan, loading: false });
+          setState({ accountId, scan, selection, loading: false });
       })
       .catch((error) => {
         if (!controller.signal.aborted)
@@ -199,7 +463,7 @@ export function FollowedTopics({
       <div className="topics-heading">
         <div>
           <h2>关注的超话</h2>
-          <p>扫码绑定后自动扫描，查看超话名称与今日状态。</p>
+          <p>查看今日状态，设置这个微博需要签到的超话。</p>
         </div>
         {accountId && (
           <Button
@@ -297,9 +561,16 @@ export function FollowedTopics({
               正在加载超话…
             </p>
           )}
-          {items.length > 0 ? (
-            <TopicList items={items} />
-          ) : scan?.scanned_at ? (
+          <SelectableTopics
+            accountId={accountId}
+            selection={
+              current.selection || { mode: "all", topic_ids: [], revision: 0 }
+            }
+            allItems={scan?.items || []}
+            items={items}
+            ready={!!scan && !!current.selection}
+          />
+          {!items.length && scan?.scanned_at ? (
             <p className="topics-empty">
               {search
                 ? "没有匹配的超话"

@@ -38,6 +38,19 @@ def topic_name(card):
     return "未返回超话名称"
 
 
+def topic_id(card):
+    """从超话容器或按钮参数取稳定标识，名称变化不影响用户选择。"""
+    values = [card.get(key) for key in ("scheme", "id", "itemid")]
+    values += [button.get("scheme") for button in card.get("buttons") or []]
+    for value in values:
+        if not isinstance(value, str):
+            continue
+        match = re.search(r"100808[0-9a-zA-Z]+", urllib.parse.unquote(html.unescape(value)))
+        if match:
+            return match.group(0)[:134]
+    return ""
+
+
 def _parse_jsonp(text: str) -> dict:
     """容错解析 JSON / JSONP 响应。"""
     text = text.strip()
@@ -347,6 +360,9 @@ class WeiboClient:
                     total += 1
                     topic_index = len(self.scan["topics"])
                     topic = {"name": name, "status": "unknown"}
+                    identifier = topic_id(g)
+                    if identifier:
+                        topic["id"] = identifier
                     self.scan["topics"].append(topic)
                     # 已签: 已签到 / 已签 / 明日再来 / 已打卡
                     if ("已签" in joined) or ("明日再来" in joined) or ("已打卡" in joined):

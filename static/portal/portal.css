@@ -483,7 +483,8 @@ h3 {
   padding: 0 20px 4px;
 }
 .account-row {
-  display: flex;
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr);
   align-items: center;
   gap: 13px;
   padding: 20px 0;
@@ -521,6 +522,8 @@ h3 {
 }
 .account-controls {
   display: flex;
+  grid-column: 2;
+  flex-wrap: wrap;
   gap: 6px;
   flex-shrink: 0;
 }
@@ -1146,7 +1149,7 @@ dialog::backdrop {
     flex-wrap: wrap;
   }
   .account-controls {
-    margin-left: 53px;
+    margin-left: 0;
   }
   .stats {
     gap: 10px;
@@ -1272,10 +1275,20 @@ dialog::backdrop {
     grid-template-columns: 1fr;
   }
   .account-row {
-    flex-wrap: wrap;
+    align-items: start;
   }
   .account-controls {
-    margin-left: 53px;
+    grid-column: 1 / -1;
+    margin-left: 0;
+    padding-top: 4px;
+    gap: 8px;
+  }
+  .account-controls .button {
+    flex: 1 1 auto;
+    min-height: 40px;
+  }
+  .account-meta > span {
+    overflow-wrap: anywhere;
   }
   .account-list {
     padding: 0 16px 3px;

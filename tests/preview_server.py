@@ -48,6 +48,14 @@ class PreviewQR:
         pass
 
 
+class PreviewWeibo(FakeWeibo):
+    def fetch_topics(self):
+        result = super().fetch_topics()
+        for index, topic in enumerate(self.scan.get("topics", [])):
+            topic["id"] = "100808" + ("a" if index == 0 else "b") * 32
+        return result
+
+
 if __name__ == "__main__":
     directory = ROOT / ".preview" / "browser"
     db = Database(directory)
@@ -105,7 +113,7 @@ if __name__ == "__main__":
         directory,
         secure_cookie=False,
         enable_scheduler=False,
-        client_factory=FakeWeibo,
+        client_factory=PreviewWeibo,
         qr_factory=PreviewQR,
     )
     uvicorn.run(app, host="127.0.0.1", port=8788)

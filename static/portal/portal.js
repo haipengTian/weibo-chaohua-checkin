@@ -62,6 +62,7 @@ const kinds = {
   qr: "扫码登录",
   system: "系统设置",
   topic_scan: "超话扫描",
+  topic_settings: "签到范围",
 };
 const badge = (status) =>
   `<span class="badge ${escapeHTML(status)}"><span class="dot"></span>${escapeHTML(labels[status] || status || "暂无记录")}</span>`;
@@ -201,7 +202,7 @@ function accountRows(accounts) {
   return accounts
     .map(
       (account) =>
-        `<div class="account-row"><div class="avatar">${escapeHTML((account.nickname || "微").slice(0, 1))}</div><div class="account-body"><div class="account-name"><strong>${escapeHTML(account.nickname || "微博用户")}</strong>${badge(account.login_status)}</div><div class="account-meta"><span class="mono">UID ${escapeHTML(account.uid)}</span><span>检测于 ${formatTime(account.last_checked)}</span></div><div class="account-meta">${account.busy ? "正在执行签到任务…" : account.last_result ? `最近签到：${escapeHTML(labels[account.last_result] || account.last_result)}` : "还没有签到记录"}</div></div><div class="account-controls"><button class="button small ghost" data-action="topics" data-id="${escapeHTML(account.id)}">关注超话</button>${account.login_status === "expired" ? `<button class="button small secondary" data-action="bind">重新扫码</button>` : `<button class="button small ghost" data-action="check" data-id="${escapeHTML(account.id)}" ${account.busy ? "disabled" : ""}>检测登录</button>`}<button class="button small secondary" data-action="checkin" data-id="${escapeHTML(account.id)}" ${account.busy || account.last_success_date === today() ? "disabled" : ""}>${account.last_success_date === today() ? "今日已签到" : account.busy ? "执行中…" : "签到"}</button></div></div>`,
+        `<div class="account-row"><div class="avatar">${escapeHTML((account.nickname || "微").slice(0, 1))}</div><div class="account-body"><div class="account-name"><strong>${escapeHTML(account.nickname || "微博用户")}</strong>${badge(account.login_status)}</div><div class="account-meta"><span class="mono">UID ${escapeHTML(account.uid)}</span><span>检测于 ${formatTime(account.last_checked)}</span></div><div class="account-meta">${account.busy ? "正在执行签到任务…" : account.last_result ? `最近签到：${escapeHTML(labels[account.last_result] || account.last_result)}` : "还没有签到记录"}</div></div><div class="account-controls"><button class="button small ghost" data-action="topics" data-id="${escapeHTML(account.id)}">关注超话</button>${account.login_status === "expired" ? `<button class="button small secondary" data-action="bind">重新扫码</button>` : `<button class="button small ghost" data-action="check" data-id="${escapeHTML(account.id)}" ${account.busy ? "disabled" : ""}>检测登录</button>`}<button class="button small secondary" data-action="checkin" data-id="${escapeHTML(account.id)}" ${account.busy || account.topics_paused || account.last_success_date === today() ? "disabled" : ""}>${account.topics_paused ? "未选择超话" : account.last_success_date === today() ? "今日已签到" : account.busy ? "执行中…" : "签到"}</button></div></div>`,
     )
     .join("");
 }
@@ -714,6 +715,7 @@ $("app").addEventListener("credit:user-created", async (event) => {
   toast("用户已创建");
   if (view === "users") await render();
 });
+document.addEventListener("credit:topics-saved", () => refreshLive());
 window.addEventListener("hashchange", render);
 async function initialize() {
   try {
