@@ -29,6 +29,8 @@ services:
       PORTAL_COOKIE_SECURE: "1"
       # 只填写实际可信的反代来源；部署前核对容器网络网关。
       FORWARDED_ALLOW_IPS: ${FORWARDED_ALLOW_IPS:-127.0.0.1}
+      MAIBOT_READ_TOKEN: ${MAIBOT_READ_TOKEN:-}
+      MAIBOT_ACCOUNT_UIDS: ${MAIBOT_ACCOUNT_UIDS:-}
     volumes:
       - ./portal-data:/app/data:Z
     tmpfs:

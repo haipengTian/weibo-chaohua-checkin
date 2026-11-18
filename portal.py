@@ -26,6 +26,7 @@ from portal_db import (
     validate_time,
     validate_username,
 )
+from portal_maibot import router as maibot_router
 from portal_runtime import service_lock
 from portal_security import DUMMY_PASSWORD, verify_password
 from portal_tasks import SHANGHAI, Runner
@@ -160,6 +161,7 @@ def create_app(
         redoc_url=None,
         openapi_url=None,
     )
+    app.include_router(maibot_router)
     app.mount(
         "/assets",
         StaticFiles(directory=ROOT / "static" / "portal"),

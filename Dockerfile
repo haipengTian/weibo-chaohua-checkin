@@ -23,6 +23,9 @@ COPY --from=frontend /build/static/portal/components ./static/portal/components
 COPY LICENSE NOTICE.md ./
 COPY licenses ./licenses
 
+# 随面板版本发布麦麦插件；提取时只需 docker create / docker cp。
+COPY integrations/maibot/_manifest.json integrations/maibot/config.py integrations/maibot/plugin.py LICENSE /app/integrations/maibot/
+
 EXPOSE 8787
 
 CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8787"]

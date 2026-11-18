@@ -1,0 +1,15 @@
+{
+  "manifest_version": 2,
+  "id": "haipengtian.weibo-checkin",
+  "version": "1.0.0",
+  "name": "微博超话签到",
+  "description": "在授权 QQ 会话查询签到情况，将微博登录失效提醒发到指定私聊或群。",
+  "author": {"name": "haipengtian", "url": "https://github.com/haipengTian"},
+  "license": "MIT",
+  "urls": {"repository": "https://github.com/haipengTian/weibo-chaohua-checkin"},
+  "i18n": {"default_locale": "zh-CN", "supported_locales": ["zh-CN"]},
+  "host_application": {"min_version": "1.3.18", "max_version": "1.3.99"},
+  "sdk": {"min_version": "2.19.0", "max_version": "2.99.99"},
+  "dependencies": [],
+  "capabilities": ["send.text", "chat.open_session"]
+}

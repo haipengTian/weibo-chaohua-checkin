@@ -31,6 +31,10 @@ CREATE TABLE IF NOT EXISTS accounts (
  created_at REAL NOT NULL, last_checked REAL NOT NULL DEFAULT 0,
  last_success_date TEXT NOT NULL DEFAULT '', credential_version INTEGER NOT NULL DEFAULT 1);
 CREATE INDEX IF NOT EXISTS accounts_owner ON accounts(owner_id);
+CREATE TABLE IF NOT EXISTS login_expirations (
+ account_id TEXT PRIMARY KEY REFERENCES accounts(id), id TEXT NOT NULL, detected_at REAL NOT NULL);
+INSERT OR IGNORE INTO login_expirations(account_id,id,detected_at)
+ SELECT id,lower(hex(randomblob(16))),last_checked FROM accounts WHERE login_status='expired';
 CREATE TABLE IF NOT EXISTS topic_scans (
  account_id TEXT PRIMARY KEY REFERENCES accounts(id), credential_version INTEGER NOT NULL,
  scanned_at REAL NOT NULL DEFAULT 0, day TEXT NOT NULL DEFAULT '',
@@ -295,6 +299,8 @@ class Database:
                         now,
                     ),
                 )
+            if row:
+                conn.execute("DELETE FROM login_expirations WHERE account_id=?", (account_id,))
             self._log(
                 conn,
                 owner_id,
@@ -511,23 +517,63 @@ class Database:
 
     def save_login(self, acc, status, cookies=None):
         # A background request using old credentials must not overwrite a newer scan.
+        now = time.time()
+        columns, values = "login_status=?,last_checked=?", [status, now]
+        if cookies is not None:
+            columns += ",cookies=?"
+            values.append(json.dumps(cookies))
         with self.connect(write=True) as conn:
-            if cookies is None:
+            changed = conn.execute(
+                f"UPDATE accounts SET {columns} WHERE id=? AND credential_version=?",
+                (*values, acc["id"], acc["credential_version"]),
+            ).rowcount
+            if not changed:
+                return
+            if status == "expired":
                 conn.execute(
-                    "UPDATE accounts SET login_status=?,last_checked=? WHERE id=? AND credential_version=?",
-                    (status, time.time(), acc["id"], acc["credential_version"]),
+                    "INSERT OR IGNORE INTO login_expirations VALUES (?,?,?)",
+                    (acc["id"], new_id(), now),
                 )
-            else:
-                conn.execute(
-                    "UPDATE accounts SET login_status=?,last_checked=?,cookies=? WHERE id=? AND credential_version=?",
-                    (
-                        status,
-                        time.time(),
-                        json.dumps(cookies),
-                        acc["id"],
-                        acc["credential_version"],
-                    ),
-                )
+            elif status == "valid":
+                conn.execute("DELETE FROM login_expirations WHERE account_id=?", (acc["id"],))
+            # A network error does not end a previously confirmed incident.
+
+    def maibot_snapshot(self, uids, today):
+        placeholders = ",".join("?" for _ in uids)
+        with self.connect() as conn:
+            rows = conn.execute(
+                f"""SELECT a.uid,a.nickname,a.login_status,p.enabled,p.time,
+                       CASE WHEN a.last_success_date=? OR EXISTS (
+                         SELECT 1 FROM runs r LEFT JOIN run_scopes s ON s.run_id=r.id
+                         WHERE r.account_id=a.id AND r.day=? AND r.status='success'
+                           AND coalesce(s.scope,'all')=coalesce(CASE WHEN t.mode='selected' THEN t.topic_ids END,'all')
+                       ) THEN 'success' ELSE (
+                         SELECT r.status FROM runs r LEFT JOIN run_scopes s ON s.run_id=r.id
+                         WHERE r.account_id=a.id AND r.day=?
+                           AND coalesce(s.scope,'all')=coalesce(CASE WHEN t.mode='selected' THEN t.topic_ids END,'all')
+                         ORDER BY r.started_at DESC,r.id DESC LIMIT 1
+                       ) END AS today_status,
+                       coalesce(t.mode='selected' AND t.topic_ids='[]',0) AS topics_paused,
+                       e.id AS incident_id,e.detected_at
+                       FROM accounts a JOIN plans p ON p.owner_id=a.owner_id
+                       LEFT JOIN topic_preferences t ON t.account_id=a.id
+                       LEFT JOIN login_expirations e ON e.account_id=a.id
+                       WHERE a.uid IN ({placeholders}) ORDER BY a.created_at,a.uid""",
+                (today, today, today, *uids),
+            ).fetchall()
+        return [
+            {
+                "uid": row["uid"],
+                "nickname": row["nickname"],
+                "login_status": "expired" if row["incident_id"] else row["login_status"],
+                "today_status": row["today_status"] or "not_run",
+                "automatic": bool(row["enabled"] and not row["topics_paused"]),
+                "scheduled_time": row["time"],
+                "expiration": {"id": row["incident_id"], "detected_at": row["detected_at"]}
+                if row["incident_id"] else None,
+            }
+            for row in rows
+        ]
 
     def plan(self, owner_id):
         with self.connect() as conn:

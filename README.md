@@ -42,6 +42,8 @@ docker compose --env-file .env.portal -f compose.portal.yaml pull
 docker compose --env-file .env.portal -f compose.portal.yaml up -d --no-build --wait
 ```
 
+需要在 QQ 查询签到或接收微博登录失效提醒时，使用[麦麦插件与配置说明](integrations/maibot/README.md)。
+
 不需要旧账号和记录时，使用[直接替换说明](docs/多用户平台使用与升级.md#不需要旧账号和记录时直接替换旧面板)。需要保留时，按[迁移说明](docs/多用户平台使用与升级.md#需要保留旧账号时迁移后切-nginx)备份和离线导入，不直接启动新平台。部署后可将 `PORTAL_IMAGE` 固定到该发布的镜像 digest，后续升级只改镜像引用。
 
 旧 `python app.py`、`docker-compose.yml` 和 Docker 镜像默认命令保持旧单面板用法。新平台需显式选择 `portal:app`；不要将两个入口指向同一份活跃数据。
