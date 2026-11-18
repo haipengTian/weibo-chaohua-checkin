@@ -1,0 +1,257 @@
+.checkin-footprint {
+  margin-bottom: 24px;
+  padding: 22px 24px;
+}
+.footprint-heading h2 {
+  font-size: 17px;
+}
+.footprint-period,
+.footprint-empty,
+.footprint-error {
+  color: var(--muted-foreground);
+  font-size: 13px;
+}
+.footprint-period {
+  margin-top: 4px;
+}
+.footprint-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.footprint-account {
+  flex: 0 1 224px;
+  min-width: 0;
+}
+@layer components {
+  /* Keep long account labels inside the trigger on the shared row. */
+  .footprint-account [data-slot="select-value"] {
+    display: block !important;
+    -webkit-line-clamp: unset !important;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  @media (max-width: 640px) {
+    .footprint-account [data-slot="select-trigger"] {
+      padding-inline: 8px !important;
+      gap: 4px !important;
+    }
+  }
+}
+.footprint-ranges {
+  margin-inline-start: auto;
+  flex: none;
+}
+.footprint-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 54%);
+  gap: 16px;
+}
+.footprint-body:not([data-period="month"]) {
+  grid-template-columns: minmax(0, 1fr);
+}
+.footprint-body:not([data-period="month"]) .footprint-chart {
+  width: 100%;
+}
+.footprint-metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: clamp(12px, 3vw, 36px);
+  width: min(100%, 344px);
+  margin: 0;
+}
+.footprint-body[data-period="month"] .footprint-metrics {
+  align-self: center;
+}
+.footprint-metrics dt {
+  color: var(--muted-foreground);
+  font-size: 13px;
+}
+.footprint-metrics dd {
+  margin: 4px 0 0;
+  font-size: clamp(36px, 5.2vw, 60px);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.045em;
+  line-height: 1.12;
+  white-space: nowrap;
+}
+.footprint-metrics small {
+  margin-inline-start: 5px;
+  color: var(--muted-foreground);
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: normal;
+}
+.footprint-count {
+  display: inline-grid;
+}
+.footprint-count > span {
+  grid-area: 1 / 1;
+}
+/* Reserve the final digit width and expose the settled value to assistive tech. */
+.footprint-count-target {
+  opacity: 0;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .footprint-count-display[data-animated="true"] {
+    animation: footprint-count-in 460ms ease-out both;
+  }
+  @keyframes footprint-count-in {
+    from { opacity: 0.45; translate: 0 4px; }
+  }
+}
+.footprint-chart {
+  position: relative;
+  width: min(100%, 480px);
+  min-width: 0;
+  justify-self: end;
+}
+.footprint-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 5px;
+  text-align: center;
+}
+.footprint-grid > span {
+  font-size: 11px;
+  color: var(--muted-foreground);
+}
+.checkin-footprint .footprint-day {
+  height: 26px;
+  min-width: 0;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  background: var(--muted);
+  color: var(--muted-foreground);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+.checkin-footprint .footprint-day.placeholder {
+  opacity: 0.65;
+}
+.checkin-footprint :is(.footprint-day, .footprint-legend i).success {
+  background: var(--green-bg);
+  color: var(--green);
+}
+.checkin-footprint :is(.footprint-day, .footprint-legend i).partial {
+  background: var(--amber-bg);
+  color: var(--amber);
+}
+.checkin-footprint :is(.footprint-day, .footprint-legend i).failed {
+  background: var(--red-bg);
+  color: var(--red);
+}
+.checkin-footprint :is(.footprint-day, .footprint-legend i).active {
+  background: color-mix(in srgb, var(--primary) 16%, var(--card));
+  color: var(--foreground);
+}
+.checkin-footprint .footprint-day[aria-current="date"],
+.checkin-footprint .footprint-day:hover:not(:disabled) {
+  border-color: currentColor;
+}
+.checkin-footprint .footprint-day.future {
+  opacity: 0.55;
+  background: none;
+  border-color: var(--border);
+  cursor: default;
+}
+.footprint-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  margin-top: 11px;
+  color: var(--muted-foreground);
+  font-size: 11px;
+}
+.footprint-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.footprint-legend i {
+  width: 11px;
+  height: 11px;
+  border-radius: 3px;
+  border: 1px solid var(--border);
+  background: var(--muted);
+}
+.footprint-error {
+  position: absolute;
+  inset-inline: 8px;
+  top: 50%;
+  translate: 0 -50%;
+  width: fit-content;
+  max-width: calc(100% - 16px);
+  margin-inline: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--card);
+  box-shadow: var(--shadow);
+  overflow-wrap: anywhere;
+}
+/* A fixed week grid keeps the same geometry during account switches. */
+.footprint-year-scroll {
+  overflow-x: auto;
+  scrollbar-width: thin;
+  padding: 4px 2px 8px;
+}
+.footprint-year-grid {
+  display: flex;
+  gap: 3px;
+  width: max-content;
+  margin-inline: auto;
+}
+.footprint-week {
+  display: grid;
+  grid-template-rows: 16px repeat(7, 16px);
+  gap: 3px;
+  width: 16px;
+}
+.footprint-week-label {
+  font-size: 11px;
+  white-space: nowrap;
+  color: var(--muted-foreground);
+}
+.footprint-week .footprint-day {
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+}
+.footprint-year-hint {
+  display: none;
+  margin-top: 4px;
+  color: var(--muted-foreground);
+  font-size: 11px;
+}
+.footprint-body[data-period="two_years"] .footprint-year-hint {
+  display: block;
+}
+@media (max-width: 1100px) {
+  .footprint-year-hint {
+    display: block;
+  }
+}
+@media (max-width: 640px) {
+  .checkin-footprint {
+    padding: 18px 16px;
+  }
+  .footprint-body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .footprint-chart {
+    width: 100%;
+  }
+  .checkin-footprint .footprint-grid .footprint-day {
+    height: 29px;
+  }
+}

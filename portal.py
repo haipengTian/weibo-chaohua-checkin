@@ -9,6 +9,7 @@ import threading
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import Literal
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
@@ -511,17 +512,24 @@ def create_app(
     def personal_calendar(
         account_id: str = Query(..., min_length=1, max_length=64),
         month: str | None = Query(None, pattern=r"^\d{4}-(0[1-9]|1[0-2])$"),
+        period: Literal["month", "year", "two_years", "all"] = "month",
         user=Depends(current_user),
     ):
         account_for(user, account_id)
         today = dt.datetime.now(SHANGHAI).date()
+        db = app.state.db
+        if period in ("year", "two_years"):
+            length = 365 if period == "year" else 730
+            return db.checkin_rolling_days(user["id"], account_id, length, today=today)
+        if period == "all":
+            return db.checkin_history(user["id"], account_id, today=today)
         try:
             first = (
                 dt.date.fromisoformat(month + "-01") if month else today.replace(day=1)
             )
         except ValueError:
             raise HTTPException(422, "月份应为有效的 YYYY-MM") from None
-        return app.state.db.checkin_calendar(user["id"], account_id, first, today=today)
+        return db.checkin_calendar(user["id"], account_id, first, today=today)
 
     @app.get("/api/runs")
     def personal_runs(

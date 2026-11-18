@@ -1,6 +1,7 @@
 import { createRoot, type Root } from "react-dom/client";
 import {
   FiltersForm,
+  AppearanceSettings,
   LoginForm,
   PlanForm,
   SystemSettingsForm,
@@ -8,9 +9,10 @@ import {
   type FormProps,
 } from "./forms";
 import "./controls.css";
-import { CheckinCalendar } from "./checkin-calendar";
-import type { CalendarAccount } from "./checkin-calendar";
+import type { CalendarAccount } from "./checkin-data";
+import { CheckinFootprint } from "./checkin-footprint";
 import { FollowedTopics, RunTopics } from "./topics";
+import { AccountPanel } from "./account-panel";
 
 const roots = new Map<HTMLElement, Root>();
 
@@ -22,20 +24,25 @@ export function mountControls(container: ParentNode = document) {
       const root = createRoot(host);
       host.classList.add("credit-controls");
       roots.set(host, root);
+      if (host.dataset.creditForm === "appearance") {
+        root.render(<AppearanceSettings />);
+        return;
+      }
+      if (host.dataset.creditForm === "account-panel") {
+        root.render(<AccountPanel />);
+        return;
+      }
       if (host.dataset.creditForm === "login") {
         root.render(<LoginForm />);
         return;
       }
-      if (
-        host.dataset.creditForm === "calendar" ||
-        host.dataset.creditForm === "topics"
-      ) {
+      if (host.dataset.creditForm === "footprint" || host.dataset.creditForm === "topics") {
         const props = JSON.parse(host.dataset.props || "{}") as {
           accounts: CalendarAccount[];
         };
         root.render(
-          host.dataset.creditForm === "calendar" ? (
-            <CheckinCalendar accounts={props.accounts} />
+          host.dataset.creditForm === "footprint" ? (
+            <CheckinFootprint accounts={props.accounts} />
           ) : (
             <FollowedTopics accounts={props.accounts} />
           ),
@@ -57,7 +64,7 @@ export function mountControls(container: ParentNode = document) {
       else if (props.kind === "system-settings")
         root.render(<SystemSettingsForm settings={props.settings} />);
       else if (props.kind === "run-topics")
-        root.render(<RunTopics runId={props.runId} />);
+        root.render(<RunTopics runId={props.runId} embedded={props.embedded} />);
     });
 }
 

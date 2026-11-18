@@ -4,17 +4,18 @@ test("sidebar rail persists and mobile drawer remains expanded", async ({
   page,
 }) => {
   await page.goto("/login");
-  await page.getByLabel("平台用户名", { exact: true }).fill("sample_user");
+  await page.getByLabel("平台用户名", { exact: true }).fill("owner");
   await page.getByLabel("密码", { exact: true }).fill("Test-password-2026!");
   await page.getByRole("button", { name: "登录平台 →" }).click();
+  await page.goto("/admin");
   await page.getByRole("button", { name: "收起侧边栏", exact: true }).click();
   await expect(page.locator("html")).toHaveClass(/sidebar-collapsed/);
   await expect(
     page.getByRole("button", { name: "展开侧边栏", exact: true }),
   ).toHaveAttribute("aria-expanded", "false");
-  await page.getByRole("link", { name: "每日计划", exact: true }).click();
+  await page.getByRole("link", { name: "用户列表", exact: true }).click();
   await expect(
-    page.getByRole("heading", { name: "每日计划", exact: true }),
+    page.getByRole("heading", { name: "用户列表", exact: true }),
   ).toBeVisible();
   await page.reload();
   await expect(page.locator("html")).toHaveClass(/sidebar-collapsed/);

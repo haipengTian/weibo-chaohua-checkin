@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -14,7 +14,7 @@ export type FormProps =
   | { kind: "plan"; plan: Plan }
   | { kind: "filters"; admin: boolean; values: Filters; statuses: Option[] }
   | { kind: "users"; search: string }
-  | { kind: "run-topics"; runId: string }
+  | { kind: "run-topics"; runId: string; embedded?: boolean }
   | { kind: "system-settings"; settings: SystemSettings };
 
 function emit(form: HTMLFormElement, name: string, detail: unknown) {
@@ -129,7 +129,7 @@ export function FiltersForm({
         name="uid"
         label="微博 UID"
         value={values.uid || ""}
-        placeholder="全部微博"
+        placeholder={admin ? "全部微博" : "微博 UID"}
         numeric
       />
       <div className="credit-field">
@@ -147,12 +147,14 @@ export function FiltersForm({
         id="filter-start"
         name="start"
         label="开始日期"
+        placeholder={admin ? undefined : "开始日期"}
         initialValue={values.start}
       />
       <DateField
         id="filter-end"
         name="end"
         label="结束日期"
+        placeholder={admin ? undefined : "结束日期"}
         initialValue={values.end}
       />
       <div className="credit-filter-actions">
@@ -379,11 +381,26 @@ export function SystemSettingsForm({ settings }: { settings: SystemSettings }) {
   );
 }
 
-export function PlanForm({ plan }: { plan: Plan }) {
+export function PlanForm({
+  plan,
+  onSaved,
+  onStateChange,
+}: {
+  plan: Plan;
+  onSaved?: () => void;
+  onStateChange?: (state: { dirty: boolean; saving: boolean }) => void;
+}) {
   const [enabled, setEnabled] = useState(plan.enabled);
+  const [time, setTime] = useState(plan.time);
   const [pending, setPending] = useState(false);
   const [feedback, setFeedback] = useState("");
   const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    onStateChange?.({
+      dirty: enabled !== plan.enabled || time !== plan.time,
+      saving: pending,
+    });
+  }, [enabled, time, plan.enabled, plan.time, pending, onStateChange]);
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     event.stopPropagation();
@@ -400,6 +417,7 @@ export function PlanForm({ plan }: { plan: Plan }) {
           : "已保存：每日签到已暂停",
       );
       emit(form, "credit:plan-saved", next);
+      onSaved?.();
     } catch (error) {
       setFailed(true);
       setFeedback(
@@ -414,7 +432,7 @@ export function PlanForm({ plan }: { plan: Plan }) {
   return (
     <form id="plan-form" className="credit-plan-form" onSubmit={save}>
       <fieldset disabled={pending}>
-        <TimeField initialValue={plan.time} />
+        <TimeField initialValue={plan.time} onChange={setTime} />
         <div className="credit-switch-row">
           <div>
             <Label htmlFor="plan-enabled">自动签到</Label>
@@ -441,6 +459,27 @@ export function PlanForm({ plan }: { plan: Plan }) {
         </p>
       )}
     </form>
+  );
+}
+
+export function AppearanceSettings() {
+  const [dark, setDark] = useState(() =>
+    document.documentElement.classList.contains("dark"),
+  );
+  return (
+    <div className="credit-switch-row">
+      <Label htmlFor="client-dark-mode">深色模式</Label>
+      <Switch
+        id="client-dark-mode"
+        checked={dark}
+        onCheckedChange={(value) => {
+          setDark(value);
+          document.dispatchEvent(
+            new CustomEvent("credit:theme", { detail: { dark: value } }),
+          );
+        }}
+      />
+    </div>
   );
 }
 
@@ -496,13 +535,6 @@ export function LoginForm() {
   }
   return (
     <>
-      <span className="eyebrow">YOUR DAILY ROUTINE</span>
-      <h1>{registering ? "开始你的每日计划" : "欢迎回来"}</h1>
-      <p className="credit-auth-description">
-        {registering
-          ? "创建平台账号，再扫码连接你的微博。"
-          : "登录平台，查看你的微博与签到计划。"}
-      </p>
       <Tabs
         value={mode}
         onValueChange={(value) => {
@@ -511,13 +543,12 @@ export function LoginForm() {
         }}
       >
         {registrationEnabled && (
-          <TabsList className="credit-auth-tabs w-full">
-            <TabsTrigger value="login" disabled={pending}>
-              登录
-            </TabsTrigger>
-            <TabsTrigger value="register" disabled={pending}>
-              注册
-            </TabsTrigger>
+          <TabsList className="credit-auth-tabs h-10 w-full gap-1 rounded-full border-0 bg-muted p-1">
+            {([['login', '登录'], ['register', '注册']] as const).map(([tab, label]) => (
+              <TabsTrigger key={tab} value={tab} disabled={pending} className="h-full rounded-full">
+                {label}
+              </TabsTrigger>
+            ))}
           </TabsList>
         )}
         {!registrationEnabled && (
@@ -591,7 +622,7 @@ export function LoginForm() {
                       {error}
                     </div>
                   )}
-                  <Button type="submit" className="h-10 w-full text-sm">
+                  <Button type="submit" className="mt-0.5 h-10 w-full rounded-full text-sm">
                     {pending
                       ? registering
                         ? "正在创建…"

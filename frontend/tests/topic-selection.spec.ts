@@ -9,10 +9,10 @@ test("mobile account layout and per-account topic selection", async ({
   await page.getByLabel("密码", { exact: true }).fill("Test-password-2026!");
   await page.getByRole("button", { name: "登录平台 →", exact: true }).click();
   const topics = page.getByRole("region", { name: "关注的超话", exact: true });
-  await expect(topics.getByText("音乐分享", { exact: true })).toBeVisible();
-  const account = page.locator(".account-row").first();
+  const account = page.locator(".workspace-account").first();
+  await expect(account).toBeVisible();
   const info = await account.locator(".account-body").boundingBox();
-  const actions = await account.locator(".account-controls").boundingBox();
+  const actions = await account.locator(".account-row-actions").boundingBox();
   expect(info!.width).toBeGreaterThan(200);
   expect(actions!.y).toBeGreaterThanOrEqual(info!.y + info!.height);
 
@@ -34,22 +34,41 @@ test("mobile account layout and per-account topic selection", async ({
     });
     try {
       await page.reload();
+      await account
+        .getByRole("button", { name: "配置签到", exact: true })
+        .click();
       await expect(
-        topics.getByRole("button", { name: "自选超话", exact: true }),
+        topics.getByRole("radio", { name: "只签到选中的超话", exact: true }),
       ).toBeDisabled();
       await expect(
         topics.getByRole("checkbox", { name: "音乐分享", exact: true }),
-      ).toBeDisabled();
+      ).toHaveCount(0);
     } finally {
       await page.unroute(scanUrl);
     }
     await page.reload();
+    await account
+      .getByRole("button", { name: "配置签到", exact: true })
+      .click();
+    await topics
+      .getByRole("radio", { name: "只签到选中的超话", exact: true })
+      .click();
     await topics
       .getByRole("checkbox", { name: "音乐分享", exact: true })
       .uncheck();
-    await topics.getByRole("button", { name: "保存", exact: true }).click();
-    await expect(topics.getByRole("status")).toHaveText("已保存");
+    const dialog = page.getByRole("dialog", { name: "配置签到", exact: true });
+    await dialog.getByRole("button", { name: "关闭弹窗" }).click();
+    await expect(dialog.getByRole("alert")).toContainText("未保存的修改");
+    await dialog.getByRole("button", { name: "继续编辑" }).click();
+    await page.screenshot({ path: "../.preview/artifacts/checkin-topics-modal-mobile.png" });
+    await topics.getByRole("button", { name: "保存设置", exact: true }).click();
+    await expect(
+      page.getByRole("dialog", { name: "配置签到", exact: true }),
+    ).not.toBeVisible();
     await page.reload();
+    await account
+      .getByRole("button", { name: "配置签到", exact: true })
+      .click();
     await expect(
       topics.getByRole("checkbox", { name: "音乐分享", exact: true }),
     ).not.toBeChecked();

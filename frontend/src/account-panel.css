@@ -1,0 +1,233 @@
+.account-panel {
+  position: fixed;
+  inset: 0;
+  margin: auto;
+  padding: 0;
+  width: min(var(--account-panel-width, 560px), calc(100% - 32px));
+  max-height: min(86dvh, 760px);
+  border: 1px solid var(--border);
+  border-radius: 24px;
+  color: var(--foreground);
+  background: var(--card);
+  box-shadow: 0 24px 60px #0f172a1a;
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+.account-panel[data-kind="plan"] {
+  --account-panel-width: 520px;
+}
+.account-panel[data-kind="topics"] {
+  --account-panel-width: 596px;
+}
+.account-panel::backdrop {
+  background: #00000029;
+  backdrop-filter: blur(2px);
+}
+.dark .account-panel::backdrop {
+  background: #0000008c;
+}
+/* Match CDK's top flip while retaining native dialog focus and inertness. */
+@media (prefers-reduced-motion: no-preference) {
+  .account-panel[open] {
+    animation: account-panel-in 280ms cubic-bezier(0.18, 0.74, 0.25, 1) backwards;
+  }
+  .account-panel[open][data-state="closing"] {
+    animation: account-panel-out 220ms ease-out forwards;
+  }
+  .account-panel[open]::backdrop {
+    animation: account-panel-shade 180ms ease-out;
+  }
+  .account-panel[open][data-state="closing"]::backdrop {
+    animation: account-panel-shade 220ms ease-out reverse forwards;
+  }
+}
+@keyframes account-panel-in {
+  from { opacity: 0; transform: perspective(500px) rotateX(20deg) scale(0.95); }
+  to { opacity: 1; transform: perspective(500px) rotateX(0) scale(1); }
+}
+@keyframes account-panel-out {
+  from { opacity: 1; transform: perspective(500px) rotateX(0) scale(1); }
+  to { opacity: 0; transform: perspective(500px) rotateX(20deg) scale(0.95); }
+}
+@keyframes account-panel-shade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.credit-controls .configured-topics {
+  padding-bottom: 0;
+}
+.account-panel-layout {
+  display: flex;
+  flex-direction: column;
+}
+.account-panel-header {
+  display: flex;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  flex-direction: row-reverse;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 18px 24px;
+  border-bottom: 1px solid var(--border);
+  background: var(--card);
+}
+.account-panel-header h2 {
+  font-size: 20px;
+  font-weight: 600;
+}
+.account-panel-header p {
+  font-size: 13px;
+  color: var(--muted-foreground);
+  margin-top: 8px;
+}
+.account-panel-header p span {
+  display: block;
+  font-size: 12px;
+  margin-top: 2px;
+}
+.account-panel-body {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+}
+.account-panel-body > .credit-plan-form {
+  padding: 22px 24px 24px;
+}
+.panel-discard {
+  padding: 16px 28px;
+  border-bottom: 1px solid var(--border);
+  background: var(--secondary);
+  font-size: 13px;
+}
+.panel-discard > div {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+.configured-topics {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  padding: 24px 28px 0;
+}
+.configured-topics .topics-heading {
+  margin-bottom: 20px;
+}
+.configured-topics .topics-heading h2 {
+  font-size: 14px;
+}
+.configured-topics .topics-heading > button {
+  font-size: 12px;
+}
+.topic-configuration {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+.topic-configuration .selection-settings {
+  display: block;
+  padding: 0;
+}
+.topic-configuration .selection-mode {
+  display: grid;
+  gap: 10px;
+  background: none;
+  padding: 0;
+}
+.credit-controls .topic-configuration .selection-mode button {
+  justify-content: flex-start !important;
+  height: auto !important;
+  min-height: 48px;
+  padding: 12px !important;
+  border: 1px solid var(--border);
+  font-size: 13px;
+}
+.credit-controls
+  .topic-configuration
+  .selection-mode
+  button[aria-checked="true"] {
+  background: color-mix(in srgb, var(--primary) 5%, var(--card)) !important;
+  border-color: var(--primary);
+}
+.mode-indicator {
+  display: inline-flex;
+  width: 16px;
+  height: 16px;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  padding: 3px;
+}
+[aria-checked="true"] > .mode-indicator {
+  border-color: var(--primary);
+}
+[aria-checked="true"] > .mode-indicator:after {
+  content: "";
+  border-radius: 50%;
+  width: 100%;
+  background: var(--primary);
+}
+.topic-configuration > .topic-search {
+  margin: 20px 0 12px;
+}
+.credit-controls .topic-configuration .selectable-topic-list {
+  display: block;
+  max-height: none;
+  overflow: visible;
+}
+.topic-configuration .selectable-topic-list > li {
+  border-bottom: 1px solid var(--border);
+}
+.topic-configuration .selection-footer {
+  position: sticky;
+  bottom: 0;
+  margin: auto -28px 0;
+  padding: 16px 28px max(16px, env(safe-area-inset-bottom));
+  border: 0;
+  border-top: 1px solid var(--border);
+  border-radius: 0;
+  box-shadow: none;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.topic-configuration .selection-footer > .selection-count {
+  font-size: 12px;
+}
+.topic-configuration .selection-actions {
+  margin-left: auto;
+}
+.topic-configuration .selection-actions button {
+  min-height: 38px;
+  min-width: 76px;
+}
+.topic-configuration > .topics-notice,
+.topic-configuration > .credit-form-error {
+  margin: 14px 0 20px;
+}
+@media (max-width: 640px) {
+  .account-panel {
+    width: calc(100% - 24px);
+    max-height: calc(100dvh - 32px);
+    border-radius: 20px;
+  }
+  .account-panel-header,
+  .account-panel-body > .credit-plan-form,
+  .panel-discard {
+    padding: 16px;
+  }
+  .account-panel-header h2 {
+    font-size: 18px;
+  }
+  .configured-topics {
+    padding: 20px 16px 0;
+  }
+  .topic-configuration .selection-footer {
+    margin-left: -16px;
+    margin-right: -16px;
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+}

@@ -12,7 +12,7 @@ test("administrator creates a user and controls public registration", async ({
   await page.getByLabel("密码", { exact: true }).fill(password);
   await page.getByRole("button", { name: "登录平台 →", exact: true }).click();
   await expect(
-    page.getByRole("heading", { name: "我的工作台", exact: true }),
+    page.getByRole("heading", { name: "我的签到", exact: true }),
   ).toBeVisible();
   await page.goto("/admin#users");
   await page.getByRole("button", { name: "添加用户", exact: true }).click();
@@ -63,7 +63,7 @@ test("administrator creates a user and controls public registration", async ({
       .getByRole("button", { name: "登录平台 →", exact: true })
       .click();
     await expect(
-      login.getByRole("heading", { name: "我的工作台", exact: true }),
+      login.getByRole("heading", { name: "我的签到", exact: true }),
     ).toBeVisible();
     expect((await guest.request.get("/api/admin/settings")).status()).toBe(403);
   } finally {

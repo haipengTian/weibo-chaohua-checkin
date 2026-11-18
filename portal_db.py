@@ -636,30 +636,43 @@ class Database:
             "page_size": page_size,
         }
 
-    def checkin_calendar(self, owner_id, account_id, month, *, today):
-        first = month.replace(day=1)
-        length = calendar.monthrange(first.year, first.month)[1]
-        last = first.replace(day=length)
+    @staticmethod
+    def _calendar_streak(conn, owner_id, account_id, today):
+        # Keep using the current streak, independent of the selected display range.
+        successes = {
+            row[0]
+            for row in conn.execute(
+                "SELECT DISTINCT day FROM runs WHERE user_id=? AND account_id=? "
+                "AND status='success' AND day<=?",
+                (owner_id, account_id, today.isoformat()),
+            )
+        }
+        cursor = today
+        if cursor.isoformat() not in successes and cursor > dt.date.min:
+            cursor -= dt.timedelta(days=1)
+        streak = 0
+        while cursor.isoformat() in successes:
+            streak += 1
+            if cursor == dt.date.min:
+                break
+            cursor -= dt.timedelta(days=1)
+        return streak
+
+    def _checkin_days(self, owner_id, account_id, first, last, *, today):
         with self.connect() as conn:
-            rows = conn.execute(
-                "SELECT day,count(*) AS attempts,max(status='success') AS complete,"
-                "max(status IN ('queued','running')) AS active,max(status='partial') AS partial "
-                "FROM runs WHERE user_id=? AND account_id=? AND day BETWEEN ? AND ? GROUP BY day",
-                (owner_id, account_id, first.isoformat(), last.isoformat()),
-            ).fetchall()
-            # Distinct successful dates, including previous months, determine the current streak.
-            successes = {
-                row[0]
+            daily = {
+                row["day"]: row
                 for row in conn.execute(
-                    "SELECT DISTINCT day FROM runs WHERE user_id=? AND account_id=? "
-                    "AND status='success' AND day<=?",
-                    (owner_id, account_id, today.isoformat()),
+                    "SELECT day,count(*) AS attempts,max(status='success') AS complete,"
+                    "max(status IN ('queued','running')) AS active,max(status='partial') AS partial "
+                    "FROM runs WHERE user_id=? AND account_id=? AND day BETWEEN ? AND ? GROUP BY day",
+                    (owner_id, account_id, first.isoformat(), last.isoformat()),
                 )
             }
-        daily = {row["day"]: row for row in rows}
+            streak = self._calendar_streak(conn, owner_id, account_id, today)
         days = []
-        for number in range(1, length + 1):
-            day = first.replace(day=number).isoformat()
+        for offset in range((last - first).days + 1):
+            day = (first + dt.timedelta(days=offset)).isoformat()
             row = daily.get(day)
             status = (
                 "none"
@@ -673,28 +686,52 @@ class Database:
                 else "failed"
             )
             days.append(
-                {
-                    "date": day,
-                    "status": status,
-                    "attempts": row["attempts"] if row else 0,
-                }
+                {"date": day, "status": status, "attempts": row["attempts"] if row else 0}
             )
-        cursor = today
-        if cursor.isoformat() not in successes and cursor > dt.date.min:
-            cursor -= dt.timedelta(days=1)
-        streak = 0
-        while cursor.isoformat() in successes:
-            streak += 1
-            if cursor == dt.date.min:
-                break
-            cursor -= dt.timedelta(days=1)
         return {
             "account_id": account_id,
-            "month": first.strftime("%Y-%m"),
             "today": today.isoformat(),
             "days": days,
             "summary": {
                 "success_days": sum(day["status"] == "success" for day in days),
+                "streak": streak,
+            },
+        }
+
+    def checkin_calendar(self, owner_id, account_id, month, *, today):
+        first = month.replace(day=1)
+        last = first.replace(day=calendar.monthrange(first.year, first.month)[1])
+        return {
+            **self._checkin_days(owner_id, account_id, first, last, today=today),
+            "month": first.strftime("%Y-%m"),
+        }
+
+    def checkin_rolling_days(self, owner_id, account_id, length, *, today):
+        first = today - dt.timedelta(days=length - 1)
+        return {
+            **self._checkin_days(owner_id, account_id, first, today, today=today),
+            "start": first.isoformat(),
+        }
+
+    def checkin_history(self, owner_id, account_id, *, today):
+        with self.connect() as conn:
+            months = [
+                dict(row)
+                for row in conn.execute(
+                    "SELECT substr(day,1,7) AS month,"
+                    "count(DISTINCT CASE WHEN status='success' THEN day END) AS success_days "
+                    "FROM runs WHERE user_id=? AND account_id=? AND day<=? "
+                    "GROUP BY month ORDER BY month DESC",
+                    (owner_id, account_id, today.isoformat()),
+                )
+            ]
+            streak = self._calendar_streak(conn, owner_id, account_id, today)
+        return {
+            "account_id": account_id,
+            "today": today.isoformat(),
+            "months": months,
+            "summary": {
+                "success_days": sum(month["success_days"] for month in months),
                 "streak": streak,
             },
         }

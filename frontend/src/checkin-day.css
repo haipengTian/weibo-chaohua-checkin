@@ -1,0 +1,25 @@
+.account-panel[data-kind="day-details"] {
+  --account-panel-width: 480px;
+  border-radius: 16px;
+}
+.checkin-day-pager {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 0;
+  border-bottom: 1px dashed var(--border);
+  color: var(--muted-foreground);
+  font-size: 12px;
+}
+.checkin-day-notice {
+  padding: 20px 0 4px;
+  color: var(--muted-foreground);
+  font-size: 13px;
+}
+.checkin-day-notice button {
+  margin-top: 12px;
+}
+.checkin-day .has-failures {
+  color: var(--red);
+}

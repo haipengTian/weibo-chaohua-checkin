@@ -7,7 +7,7 @@ async function login(page: Page, username = "sample_user") {
   await page.getByLabel("平台用户名", { exact: true }).fill(username);
   await page.getByLabel("密码", { exact: true }).fill(password);
   await page.getByRole("button", { name: "登录平台 →" }).click();
-  await expect(page.getByRole("heading", { name: "我的工作台" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "我的签到" })).toBeVisible();
 }
 
 async function setTime(page: Page, hour: string, minute: string) {
@@ -34,7 +34,7 @@ test("credit time, switch, save persistence, failure and portal cleanup", async 
       errors.push(message.text());
   });
   await login(page);
-  await page.getByRole("link", { name: "每日计划", exact: true }).click();
+  await page.getByRole("link", { name: "我的", exact: true }).click();
   await setTime(page, "07", "45");
   await page.getByRole("switch", { name: "自动签到" }).check();
   const saved = page.waitForResponse(
@@ -83,6 +83,57 @@ test("credit time, switch, save persistence, failure and portal cleanup", async 
     ),
   ).toHaveCount(0);
   expect(errors).toEqual([]);
+});
+
+test("homepage plan uses the centered animated dialog and keeps its time picker inside", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 700 });
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+  await login(page);
+  const open = page.getByRole("button", { name: "修改计划", exact: true });
+  const modal = page.getByRole("dialog", { name: "每日计划", exact: true });
+  await page.locator("dialog.account-panel").evaluate((element: HTMLDialogElement) => {
+    element.addEventListener("animationend", (event) => {
+      if (event.target === element && !event.pseudoElement) {
+        element.setAttribute("data-last-animation", event.animationName);
+      }
+    });
+  });
+  await open.click();
+  await expect(modal).toHaveAttribute("data-last-animation", "account-panel-in");
+  const box = (await modal.boundingBox())!;
+  expect(Math.abs(box.x + box.width / 2 - 195)).toBeLessThan(1);
+  expect(Math.abs(box.y + box.height / 2 - 350)).toBeLessThan(1);
+  await modal.getByRole("button", { name: "每天签到时间 · 北京时间" }).click();
+  const picker = modal.getByRole("dialog", { name: "签到时间选择器" });
+  await expect(picker).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(picker).not.toBeVisible();
+  await expect(modal).toBeVisible();
+  await setTime(page, "06", "30");
+  await expect(modal.locator("#plan-time")).toHaveText("06:30");
+  await page.screenshot({ path: "../.preview/artifacts/checkin-plan-modal-mobile.png" });
+  await modal.getByRole("button", { name: "关闭弹窗" }).click();
+  await expect(modal.getByRole("alert")).toContainText("未保存的修改");
+  await modal.getByRole("button", { name: "继续编辑" }).click();
+
+  let saved: { enabled: boolean; time: string } | undefined;
+  await page.route("**/api/settings", (route) => {
+    if (route.request().method() !== "PUT") return route.continue();
+    saved = route.request().postDataJSON();
+    return route.fulfill({ json: saved });
+  });
+  await modal.getByRole("button", { name: "保存签到计划" }).click();
+  await expect(modal).not.toBeVisible();
+  expect(saved?.time).toBe("06:30");
+  await expect(page.locator(".account-panel")).toHaveAttribute("data-last-animation", "account-panel-out");
+  await expect(open).toBeFocused();
+
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await open.click();
+  await expect(modal).toBeVisible();
+  await expect(modal).toHaveCSS("animation-name", "none");
+  await page.mouse.click(2, 2);
+  await expect(modal).not.toBeVisible();
 });
 
 test("record filters use credit select/calendar, retain ISO dates across timezone and reset", async ({
@@ -196,5 +247,5 @@ test("credit registration validates confirmation and creates a usable session", 
   await expect(page.getByRole("alert")).toHaveText("两次密码输入不一致");
   await page.getByLabel("确认密码", { exact: true }).fill(password);
   await page.getByRole("button", { name: "创建账号", exact: true }).click();
-  await expect(page.getByRole("heading", { name: "我的工作台" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "我的签到" })).toBeVisible();
 });

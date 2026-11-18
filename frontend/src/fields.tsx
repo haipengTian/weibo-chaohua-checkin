@@ -66,11 +66,13 @@ export function DateField({
   name,
   label,
   initialValue = "",
+  placeholder = "选择日期",
 }: {
   id: string;
   name: string;
   label: string;
   initialValue?: string;
+  placeholder?: string;
 }) {
   const [value, setValue] = useState(initialValue);
   const [open, setOpen] = useState(false);
@@ -89,7 +91,7 @@ export function DateField({
             aria-label={label}
           >
             <span className={!value ? "text-muted-foreground" : ""}>
-              {date ? format(date, "yyyy/MM/dd") : "选择日期"}
+              {date ? format(date, "yyyy/MM/dd") : placeholder}
             </span>
             <CalendarIcon className="size-4 text-muted-foreground" />
           </Button>
@@ -162,7 +164,13 @@ const hours = numbers(24),
 
 // credit-ui has no time picker. Compose its Popover/Select/Button primitives,
 // preserving the API's 24-hour HH:mm value without a browser-native time widget.
-export function TimeField({ initialValue }: { initialValue: string }) {
+export function TimeField({
+  initialValue,
+  onChange,
+}: {
+  initialValue: string;
+  onChange?: (value: string) => void;
+}) {
   const [value, setValue] = useState(initialValue);
   const [draft, setDraft] = useState(initialValue);
   const [open, setOpen] = useState(false);
@@ -235,6 +243,7 @@ export function TimeField({ initialValue }: { initialValue: string }) {
               size="sm"
               onClick={() => {
                 setValue(draft);
+                onChange?.(draft);
                 setOpen(false);
               }}
             >

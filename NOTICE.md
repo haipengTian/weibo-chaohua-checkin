@@ -6,6 +6,7 @@
 
 React、Radix、react-day-picker、date-fns、Lucide 及其他打包运行依赖的许可与版权声明见 `licenses/FRONTEND-THIRD-PARTY.txt`，版本以 `frontend/package-lock.json` 为准。
 
-- Credit：<https://github.com/linux-do/credit>，Apache-2.0，完整许可见 `licenses/CREDIT-APACHE-2.0.txt`。保留其浅色/深色设计变量与组件样式基础。
-- 修改（2026-11-17）：移除原积分、支付与演示业务，新增微博账号、个人计划、用户列表、异常与日志页面；改为 FastAPI 同源接口与服务端会话。不包含原品牌图片、字体文件、CDK 组件或演示数据。
+- Credit：<https://github.com/linux-do/credit>，Apache-2.0，完整许可见 `licenses/CREDIT-APACHE-2.0.txt`。保留其浅色/深色设计变量与组件样式基础；登录页参照 Credit 的居中布局和极光背景。
+- CDK：<https://github.com/linux-do/cdk>，MIT，Copyright (c) 2025 linux.do，完整许可见 `licenses/CDK-MIT.txt`。用户端底部导航参考本地 CDK 的 FloatingDock，使用静态导航和 CSS 动效实现鼠标距离放大及手机折叠菜单。
+- 修改（2026-11-17、2026-11-18）：移除原积分、支付与演示业务，新增微博账号、个人计划、用户列表、异常与日志页面；改为 FastAPI 同源接口与服务端会话。不包含原品牌图片、字体文件或演示数据。
 - 本项目上游代码仍适用根目录 `LICENSE` 中的 MIT 许可。

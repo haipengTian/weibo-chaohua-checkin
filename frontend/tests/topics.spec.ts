@@ -11,6 +11,14 @@ test("followed topics show names, filter and refresh without signing", async ({
   await page.getByLabel("平台用户名", { exact: true }).fill("sample_user");
   await page.getByLabel("密码", { exact: true }).fill("Test-password-2026!");
   await page.getByRole("button", { name: "登录平台 →", exact: true }).click();
+  await page
+    .locator(".workspace-account")
+    .filter({ hasText: "微光收藏家" })
+    .getByRole("button", { name: "配置签到", exact: true })
+    .click();
+  await page
+    .getByRole("radio", { name: "只签到选中的超话", exact: true })
+    .click();
   const topics = page.getByRole("region", { name: "关注的超话", exact: true });
   await expect(topics.getByText("音乐分享", { exact: true })).toBeVisible();
   await expect(topics.getByText("测试超话", { exact: true })).toBeVisible();

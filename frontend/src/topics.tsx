@@ -1,9 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Check, Minus, RefreshCw, Search } from "lucide-react";
 import { Choice } from "./fields";
-import type { CalendarAccount } from "./checkin-calendar";
+import type { CalendarAccount } from "./checkin-data";
 import "./topics.css";
 
 type Topic = { id?: string; name: string; status: string };
@@ -90,6 +90,11 @@ function SelectableTopics({
   items,
   ready,
   complete,
+  configuration = false,
+  searchControl,
+  onStateChange,
+  onCancel,
+  onSaved,
 }: {
   accountId: string;
   selection: Selection;
@@ -97,6 +102,11 @@ function SelectableTopics({
   items: Topic[];
   ready: boolean;
   complete: boolean;
+  configuration?: boolean;
+  searchControl?: ReactNode;
+  onStateChange?: (state: { dirty: boolean; saving: boolean }) => void;
+  onCancel?: () => void;
+  onSaved?: () => void;
 }) {
   // Keep each account's unsaved choices when switching accounts or refreshing scans.
   const [drafts, setDrafts] = useState<Record<string, Selection>>({});
@@ -115,6 +125,9 @@ function SelectableTopics({
     draft.mode !== base.mode ||
     [...draft.topic_ids].sort().join(",") !==
       [...base.topic_ids].sort().join(",");
+  useEffect(() => {
+    onStateChange?.({ dirty, saving: !!state.saving });
+  }, [dirty, state.saving, onStateChange]);
   function update(next: Selection) {
     setDrafts((previous) => ({ ...previous, [accountId]: next }));
     setFeedback((previous) => ({ ...previous, [accountId]: {} }));
@@ -168,7 +181,12 @@ function SelectableTopics({
         ...previous,
         [accountId]: { message: "已保存" },
       }));
-      document.dispatchEvent(new CustomEvent("credit:topics-saved"));
+      document.dispatchEvent(
+        new CustomEvent("credit:topics-saved", {
+          detail: { accountId, selection: data.selection },
+        }),
+      );
+      onSaved?.();
     } catch (error) {
       setFeedback((previous) => ({
         ...previous,
@@ -192,9 +210,15 @@ function SelectableTopics({
     visibleIds.length > 0 && visibleSelected === visibleIds.length;
   if (!ready) return null;
   return (
-    <div className="topic-selection">
+    <div
+      className={`topic-selection${configuration ? " topic-configuration" : ""}`}
+    >
       <div className="selection-settings">
-        <div className="selection-mode" role="group" aria-label="签到范围">
+        <div
+          className="selection-mode"
+          role={configuration ? "radiogroup" : "group"}
+          aria-label="签到范围"
+        >
           {(
             [
               ["all", "全部签到"],
@@ -206,7 +230,14 @@ function SelectableTopics({
               size="sm"
               variant="ghost"
               key={mode}
-              aria-pressed={draft.mode === mode}
+              className={
+                configuration
+                  ? "justify-start whitespace-normal h-auto px-3 py-3"
+                  : undefined
+              }
+              role={configuration ? "radio" : undefined}
+              aria-checked={configuration ? draft.mode === mode : undefined}
+              aria-pressed={configuration ? undefined : draft.mode === mode}
               title={
                 mode === "selected"
                   ? "只签到勾选的超话；新关注需手动勾选"
@@ -230,51 +261,76 @@ function SelectableTopics({
                 });
               }}
             >
-              {label}
+              {configuration ? (
+                <>
+                  <span className="mode-indicator" aria-hidden="true" />
+                  <span>
+                    {mode === "all" ? "全部关注的超话" : "只签到选中的超话"}
+                  </span>
+                </>
+              ) : (
+                label
+              )}
             </Button>
           ))}
         </div>
-        <span className="selection-count">
-          {draft.mode === "all"
-            ? complete
-              ? "新关注也会自动签到"
-              : "刷新完整列表后可自选"
-            : `已选 ${selected.size} / ${allItems.length}`}
-        </span>
-      </div>
-      <div className="selection-list-heading">
-        <Button
-          type="button"
-          size="sm"
-          variant="ghost"
-          className="selection-toggle"
-          role="checkbox"
-          aria-checked={
-            allVisible ? true : visibleSelected > 0 ? "mixed" : false
-          }
-          aria-label={
-            items.length === allItems.length ? "全选超话" : "全选搜索结果"
-          }
-          disabled={
-            state.saving ||
-            !visibleIds.length ||
-            (draft.mode === "all" && !complete)
-          }
-          onClick={() => toggleVisible(!allVisible)}
-        >
-          <span className="topic-check" aria-hidden="true">
-            {allVisible ? (
-              <Check size={14} />
-            ) : visibleSelected > 0 ? (
-              <Minus size={14} />
-            ) : null}
+        {!configuration && (
+          <span className="selection-count">
+            {draft.mode === "all"
+              ? complete
+                ? "新关注也会自动签到"
+                : "刷新完整列表后可自选"
+              : `已选 ${selected.size} / ${allItems.length}`}
           </span>
-          {items.length === allItems.length
-            ? "全选"
-            : `搜索结果 ${items.length}`}
-        </Button>
-        <span className="topic-status">今日状态</span>
+        )}
       </div>
+      {configuration && draft.mode === "all" && (
+        <p className="topics-notice">
+          {complete
+            ? `将为全部 ${allItems.length} 个关注超话签到`
+            : "将为全部关注超话签到，当前列表尚未读完"}
+          ，以后新关注的也会自动加入。
+          {!complete && "刷新完整列表后可改为自选。"}
+        </p>
+      )}
+      {configuration && draft.mode === "selected" && searchControl}
+      {(!configuration || draft.mode === "selected") && (
+        <div className="selection-list-heading">
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            className="selection-toggle"
+            role="checkbox"
+            aria-checked={
+              allVisible ? true : visibleSelected > 0 ? "mixed" : false
+            }
+            aria-label={
+              items.length === allItems.length ? "全选超话" : "全选搜索结果"
+            }
+            disabled={
+              state.saving ||
+              !visibleIds.length ||
+              (draft.mode === "all" && !complete)
+            }
+            onClick={() => toggleVisible(!allVisible)}
+          >
+            <span className="topic-check" aria-hidden="true">
+              {allVisible ? (
+                <Check size={14} />
+              ) : visibleSelected > 0 ? (
+                <Minus size={14} />
+              ) : null}
+            </span>
+            {items.length === allItems.length
+              ? "全选"
+              : `搜索结果 ${items.length}`}
+          </Button>
+          <span className="topic-status">
+            {configuration ? `已选 ${selected.size} 个` : "今日状态"}
+          </span>
+        </div>
+      )}
       {missing > 0 && draft.mode === "selected" && (
         <p className="topics-notice">
           {missing} 个已选超话未在列表中找到
@@ -296,7 +352,7 @@ function SelectableTopics({
           </Button>
         </p>
       )}
-      {items.length > 0 && (
+      {items.length > 0 && (!configuration || draft.mode === "selected") && (
         <ul className="topic-list selectable-topic-list">
           {items.map((topic, index) => {
             const checked =
@@ -338,9 +394,11 @@ function SelectableTopics({
                     {!topic.id && <small>请刷新后选择</small>}
                   </span>
                 </Button>
-                <span className={`topic-status ${topic.status}`}>
-                  {labels[topic.status] || "待确认"}
-                </span>
+                {!configuration && (
+                  <span className={`topic-status ${topic.status}`}>
+                    {labels[topic.status] || "待确认"}
+                  </span>
+                )}
               </li>
             );
           })}
@@ -358,26 +416,28 @@ function SelectableTopics({
           {state.error}
         </p>
       )}
-      {dirty ? (
+      {configuration || dirty ? (
         <div className="selection-footer">
-          <span className="selection-count">未保存</span>
+          <span className="selection-count">
+            {dirty ? "有未保存的修改" : "保存后用于手动和定时签到"}
+          </span>
           <div className="selection-actions">
             <Button
               type="button"
               size="sm"
               variant="ghost"
               disabled={state.saving}
-              onClick={() => update(base)}
+              onClick={() => (configuration ? onCancel?.() : update(base))}
             >
               取消
             </Button>
             <Button
               type="button"
               size="sm"
-              disabled={state.saving}
+              disabled={state.saving || !dirty}
               onClick={save}
             >
-              {state.saving ? "保存中…" : "保存"}
+              {state.saving ? "保存中…" : configuration ? "保存设置" : "保存"}
             </Button>
           </div>
         </div>
@@ -392,8 +452,16 @@ function SelectableTopics({
 
 export function FollowedTopics({
   accounts: initial,
+  configuration = false,
+  onStateChange,
+  onCancel,
+  onSaved,
 }: {
   accounts: CalendarAccount[];
+  configuration?: boolean;
+  onStateChange?: (state: { dirty: boolean; saving: boolean }) => void;
+  onCancel?: () => void;
+  onSaved?: () => void;
 }) {
   const [accounts, setAccounts] = useState(initial);
   const [accountId, setAccountId] = useState(initial[0]?.id || "");
@@ -437,8 +505,14 @@ export function FollowedTopics({
       method,
     )
       .then(({ scan, selection }) => {
-        if (!controller.signal.aborted)
+        if (!controller.signal.aborted) {
           setState({ accountId, scan, selection, loading: false });
+          document.dispatchEvent(
+            new CustomEvent("credit:topics-loaded", {
+              detail: { accountId, scan, selection },
+            }),
+          );
+        }
       })
       .catch((error) => {
         if (!controller.signal.aborted)
@@ -478,7 +552,7 @@ export function FollowedTopics({
     const refresh = (event: Event) => {
       const next = (event as CustomEvent<{ accounts: CalendarAccount[] }>)
         .detail?.accounts;
-      if (next) {
+      if (next && !configuration) {
         setAccounts(next);
         setAccountId((current) =>
           next.some((account) => account.id === current)
@@ -502,20 +576,20 @@ export function FollowedTopics({
       document.removeEventListener("credit:calendar-refresh", refresh);
       document.removeEventListener("credit:topics-select", select);
     };
-  }, []);
+  }, [configuration]);
   const items = (scan?.items || []).filter((topic) =>
     topic.name.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase()),
   );
   return (
     <section
       id="followed-topics"
-      className="followed-topics"
+      className={`followed-topics${configuration ? " configured-topics" : ""}`}
       aria-label="关注的超话"
     >
       <div className="topics-heading">
         <div>
-          <h2>超话签到</h2>
-          {scan?.scanned_at ? (
+          <h2>{configuration ? "签到范围" : "超话签到"}</h2>
+          {!configuration && scan?.scanned_at ? (
             <p>
               {scan.complete ? "关注" : "已读取"} {scan.items.length} 个
               {scan.fresh
@@ -549,35 +623,36 @@ export function FollowedTopics({
         <p className="topics-empty">绑定微博后显示你关注的超话。</p>
       ) : (
         <>
-          <div className="topics-toolbar">
-            <div className="credit-field">
-              <Choice
-                id="topics-account"
-                label="微博账号"
-                value={accountId}
-                onChange={(value) => {
-                  setAccountId(value);
-                  setSearch("");
-                }}
-                options={accounts.map((account) => ({
-                  value: account.id,
-                  label: `${account.nickname || "微博用户"} · ${account.uid}`,
-                }))}
-              />
+          {!configuration && (
+            <div className="topics-toolbar">
+              <div className="credit-field">
+                <Choice
+                  id="topics-account"
+                  label="微博账号"
+                  value={accountId}
+                  onChange={(value) => {
+                    setAccountId(value);
+                    setSearch("");
+                  }}
+                  options={accounts.map((account) => ({
+                    value: account.id,
+                    label: `${account.nickname || "微博用户"} · ${account.uid}`,
+                  }))}
+                />
+              </div>
+              <div className="topic-search">
+                <Search size={14} aria-hidden="true" />
+                <Input
+                  type="search"
+                  placeholder="搜索超话"
+                  aria-label="搜索超话"
+                  className="pl-8"
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
+                />
+              </div>
             </div>
-            <div className="topic-search">
-              <Search size={14} aria-hidden="true" />
-              <Input
-                id="topic-search"
-                type="search"
-                placeholder="搜索超话"
-                aria-label="搜索超话"
-                className="pl-8"
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-              />
-            </div>
-          </div>
+          )}
           {current.error && (
             <p role="alert" className="credit-form-error">
               {current.error}{" "}
@@ -617,6 +692,23 @@ export function FollowedTopics({
             items={items}
             ready={!!scan && !!current.selection}
             complete={!!scan?.complete}
+            configuration={configuration}
+            searchControl={
+              <div className="topic-search">
+                <Search size={14} aria-hidden="true" />
+                <Input
+                  type="search"
+                  placeholder="搜索超话"
+                  aria-label="搜索超话"
+                  className="pl-8"
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
+                />
+              </div>
+            }
+            onStateChange={onStateChange}
+            onCancel={onCancel}
+            onSaved={onSaved}
           />
           {!items.length && scan?.scanned_at ? (
             <p className="topics-empty">
@@ -633,8 +725,18 @@ export function FollowedTopics({
   );
 }
 
-export function RunTopics({ runId }: { runId: string }) {
-  const [expanded, setExpanded] = useState(false);
+// Show unsuccessful or unconfirmed topics before completed topics in a day's result.
+const needsAttention = (topic: Topic) =>
+  ["failed", "network_error", "unknown", "pending"].includes(topic.status);
+
+export function RunTopics({
+  runId,
+  embedded = false,
+}: {
+  runId: string;
+  embedded?: boolean;
+}) {
+  const [expanded, setExpanded] = useState(embedded);
   const [revision, setRevision] = useState(0);
   const [data, setData] = useState<{ items: Topic[]; status: string }>();
   const [error, setError] = useState("");
@@ -668,15 +770,17 @@ export function RunTopics({ runId }: { runId: string }) {
   }, [expanded, runId, revision]);
   return (
     <div className="run-topics">
-      <Button
-        type="button"
-        variant="ghost"
-        size="sm"
-        aria-expanded={expanded}
-        onClick={() => setExpanded((value) => !value)}
-      >
-        {expanded ? "收起超话明细" : "查看超话明细"}
-      </Button>
+      {!embedded && (
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          aria-expanded={expanded}
+          onClick={() => setExpanded((value) => !value)}
+        >
+          {expanded ? "收起超话明细" : "查看超话明细"}
+        </Button>
+      )}
       {expanded && (
         <div className="run-topics-content">
           {error ? (
@@ -694,7 +798,12 @@ export function RunTopics({ runId }: { runId: string }) {
           ) : !data ? (
             <p role="status">正在加载超话明细…</p>
           ) : data.items.length ? (
-            <TopicList items={data.items} historical />
+            <TopicList
+              items={embedded
+                ? [...data.items.filter(needsAttention), ...data.items.filter((topic) => !needsAttention(topic))]
+                : data.items}
+              historical
+            />
           ) : (
             <p className="topics-notice">此记录暂无逐个超话明细。</p>
           )}

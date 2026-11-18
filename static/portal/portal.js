@@ -13,6 +13,7 @@ const escapeHTML = (value) =>
       ],
   );
 const paths = {
+  user: '<circle cx="12" cy="8" r="4"/><path d="M5 21v-2a7 7 0 0 1 14 0v2"/>',
   home: '<path d="m3 10 9-7 9 7v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1Z"/><path d="M9 21v-9h6v9"/>',
   clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
   list: '<rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 7h6M9 12h6M9 17h4"/>',
@@ -94,6 +95,8 @@ let user,
   qrGeneration = 0;
 const filters = {},
   pages = {};
+let planCache = { enabled: false, time: "08:00" };
+const topicSummaries = new Map();
 let accountsCache = [],
   refreshPending = false,
   workspaceDay = today();
@@ -148,9 +151,9 @@ function stat(label, value, note, name) {
   return `<div class="card stat"><div class="stat-label">${label}${icon(name)}</div><div class="stat-value mono">${escapeHTML(value)}</div><div class="stat-note">${escapeHTML(note)}</div></div>`;
 }
 const userNav = [
-  ["home", "工作台", "home"],
+  ["home", "首页", "home"],
   ["runs", "签到记录", "list"],
-  ["settings", "每日计划", "clock"],
+  ["settings", "我的", "user"],
 ];
 const adminNav = [
   ["overview", "监控概览", "grid"],
@@ -160,12 +163,82 @@ const adminNav = [
   ["logs", "运行日志", "list"],
   ["system-settings", "系统设置", "shield"],
 ];
+// Navigation and distance scaling adapted from CDK FloatingDock; see NOTICE.md.
+function clientDock() {
+  const links = userNav.map(([id, text, name]) =>
+    `<a href="#${id}" class="dock-link" data-view="${id}" aria-label="${text}">${icon(name)}<span class="dock-label" aria-hidden="true">${text}</span></a>`,
+  );
+  return `<div class="client-dock"><button type="button" class="dock-toggle" aria-label="导航菜单" aria-expanded="false" aria-controls="client-nav">${icon("panel")}</button><nav id="client-nav" class="dock-nav" aria-label="主导航">${links.slice(0, 2).join("")}<span class="dock-divider" aria-hidden="true"></span>${links[2]}</nav></div>`;
+}
+function setupClientDock() {
+  const dock = document.querySelector(".client-dock");
+  const toggle = dock.querySelector(".dock-toggle");
+  const nav = $("client-nav");
+  const links = Array.from(nav.querySelectorAll(".dock-link"));
+  const magnify = matchMedia(
+    "(min-width: 761px) and (any-pointer: fine) and (prefers-reduced-motion: no-preference)",
+  );
+  const mobile = matchMedia("(max-width: 760px)");
+  const isOpen = () => toggle.getAttribute("aria-expanded") === "true";
+  const close = (restoreFocus = false) => {
+    if (!isOpen()) return;
+    toggle.setAttribute("aria-expanded", "false");
+    if (restoreFocus && mobile.matches) toggle.focus();
+  };
+  toggle.addEventListener("click", () => {
+    if (isOpen()) close();
+    else toggle.setAttribute("aria-expanded", "true");
+  });
+  nav.addEventListener("click", (event) => {
+    if (event.target.closest(".dock-link"))
+      close(nav.contains(document.activeElement));
+  });
+  document.addEventListener("click", (event) => {
+    if (!dock.contains(event.target)) close(dock.contains(document.activeElement));
+  });
+  dock.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && isOpen()) {
+      event.stopPropagation();
+      close(true);
+    }
+  });
+  const closeAfterNavigation = () => close(dock.contains(document.activeElement));
+  window.addEventListener("hashchange", closeAfterNavigation);
+  mobile.addEventListener("change", closeAfterNavigation);
+
+  const reset = () =>
+    links.forEach((link) => link.style.removeProperty("--dock-grow"));
+  nav.addEventListener("pointermove", (event) => {
+    if (!magnify.matches || event.pointerType === "touch") return;
+    // Read all centers before resizing any item.
+    const distances = links.map((link) => {
+      const { left, width } = link.getBoundingClientRect();
+      return Math.abs(event.clientX - left - width / 2);
+    });
+    links.forEach((link, index) => {
+      link.style.setProperty("--dock-grow", Math.max(0, 1 - distances[index] / 150));
+    });
+  });
+  nav.addEventListener("pointerleave", reset);
+  magnify.addEventListener("change", reset);
+}
 function shell() {
+  document.body.classList.toggle("client-mode", !isAdmin);
+  document.body.classList.toggle("admin-mode", isAdmin);
+  if (!isAdmin) {
+    $("app").innerHTML =
+      `<div class="client-shell"><header class="client-header"><a class="client-brand" href="#home" aria-label="超话首页"><img src="/assets/mark.svg" alt=""><span>超话<small>DAILY CHECK-IN</small></span></a><a class="client-account" href="#settings" aria-label="我的账号"><span>${escapeHTML(user.username)}</span><span class="avatar">${escapeHTML(user.username.slice(0, 1).toUpperCase())}</span></a></header><main class="content client-content" id="main"></main>${clientDock()}</div><div id="account-panel-host" data-credit-form="account-panel"></div>`;
+    $("app").setAttribute("aria-busy", "false");
+    setupClientDock();
+    mountControls($("app"));
+    return;
+  }
   const nav = isAdmin ? adminNav : userNav;
   $("app").innerHTML =
-    `<button class="backdrop" data-action="menu" aria-label="收起导航"></button><aside class="sidebar" id="sidebar"><a class="brand" href="${isAdmin ? "/admin" : "/"}" aria-label="超话签到工作台" title="超话签到工作台"><img src="/assets/mark.svg" alt=""><span>超话<small>DAILY CHECK-IN</small></span></a><div class="nav-label">${isAdmin ? "管理与监控" : "我的工作空间"}</div><nav aria-label="主导航">${nav.map(([id, text, name]) => `<a class="nav-link" href="#${id}" data-view="${id}" aria-label="${text}" title="${text}">${icon(name)}<span class="nav-text">${text}</span></a>`).join("")}</nav><div class="sidebar-bottom">${user.role === "admin" ? `<a class="workspace-switch" href="${isAdmin ? "/" : "/admin"}" aria-label="${isAdmin ? "返回用户端" : "管理控制台"}" title="${isAdmin ? "返回用户端" : "管理控制台"}">${icon(isAdmin ? "home" : "shield")}<span>${isAdmin ? "返回用户端" : "管理控制台"}</span><span>↗</span></a>` : ""}<div class="user-block"><div class="avatar" title="${escapeHTML(user.username)}">${escapeHTML(user.username.slice(0, 1).toUpperCase())}</div><div class="user-meta"><strong>${escapeHTML(user.username)}</strong><small>${user.role === "admin" ? "平台管理员" : "平台用户"}</small></div><button class="icon-button" data-action="logout" aria-label="退出登录">${icon("logout")}</button></div></div></aside><div class="shell"><header class="topbar"><button class="icon-button sidebar-toggle" data-action="menu" aria-controls="sidebar" aria-label="收起侧边栏" title="收起侧边栏">${icon("panel")}</button><span class="crumb">${isAdmin ? "管理端" : "用户端"} <span aria-hidden="true">/</span> <b id="breadcrumb"></b></span><div class="topbar-right"><span class="timezone">${icon("clock")}北京时间 · UTC+8</span><button class="icon-button" data-action="theme" aria-label="切换明暗主题">${icon("moon")}</button></div></header><main class="content" id="main"></main></div>`;
+    `<button class="backdrop" data-action="menu" aria-label="收起导航"></button><aside class="sidebar" id="sidebar"><a class="brand" href="${isAdmin ? "/admin" : "/"}" aria-label="超话签到工作台" title="超话签到工作台"><img src="/assets/mark.svg" alt=""><span>超话<small>DAILY CHECK-IN</small></span></a><div class="nav-label">${isAdmin ? "管理与监控" : "我的工作空间"}</div><nav aria-label="主导航">${nav.map(([id, text, name]) => `<a class="nav-link" href="#${id}" data-view="${id}" aria-label="${text}" title="${text}">${icon(name)}<span class="nav-text">${text}</span></a>`).join("")}</nav><div class="sidebar-bottom">${user.role === "admin" ? `<a class="workspace-switch" href="${isAdmin ? "/" : "/admin"}" aria-label="${isAdmin ? "返回用户端" : "管理控制台"}" title="${isAdmin ? "返回用户端" : "管理控制台"}">${icon(isAdmin ? "home" : "shield")}<span>${isAdmin ? "返回用户端" : "管理控制台"}</span><span>↗</span></a>` : ""}<div class="user-block"><div class="avatar" title="${escapeHTML(user.username)}">${escapeHTML(user.username.slice(0, 1).toUpperCase())}</div><div class="user-meta"><strong>${escapeHTML(user.username)}</strong><small>${user.role === "admin" ? "平台管理员" : "平台用户"}</small></div><button class="icon-button" data-action="logout" aria-label="退出登录">${icon("logout")}</button></div></div></aside><div class="shell"><header class="topbar"><button class="icon-button sidebar-toggle" data-action="menu" aria-controls="sidebar" aria-label="收起侧边栏" title="收起侧边栏">${icon("panel")}</button><span class="crumb">${isAdmin ? "管理端" : "用户端"} <span aria-hidden="true">/</span> <b id="breadcrumb"></b></span><div class="topbar-right"><span class="timezone">${icon("clock")}北京时间 · UTC+8</span><button class="icon-button" data-action="theme" aria-label="切换明暗主题">${icon("moon")}</button></div></header><main class="content" id="main"></main></div><div id="account-panel-host" data-credit-form="account-panel"></div>`;
   $("app").setAttribute("aria-busy", "false");
   updateSidebarToggle();
+  mountControls($("app"));
 }
 const mobileNavigation = matchMedia("(max-width: 640px)");
 function updateSidebarToggle() {
@@ -184,27 +257,97 @@ mobileNavigation.addEventListener("change", () => {
   updateSidebarToggle();
 });
 const footer = () =>
-  `<footer class="footer"><span>超话 · 每日签到工作台</span></footer>`;
+  isAdmin
+    ? `<footer class="footer"><span>超话 · 管理控制台</span></footer>`
+    : "";
 function heading(title, description, action = "") {
-  return `<div class="page-heading"><div><span class="eyebrow">${isAdmin ? "CONTROL CENTER" : "MY WORKSPACE"}</span><h1>${title}</h1><p>${description}</p></div><div class="actions">${action}</div></div>`;
+  return `<div class="page-heading"><div>${isAdmin ? '<span class="eyebrow">CONTROL CENTER</span>' : ""}<h1 tabindex="-1">${title}</h1>${description ? `<p>${description}</p>` : ""}</div><div class="actions">${action}</div></div>`;
 }
 const refreshButton = () =>
   `<button class="button secondary" data-action="refresh">${icon("refresh")}刷新</button>`;
 
+function scopeSummary(account) {
+  const data = topicSummaries.get(account.id);
+  if (account.topics_paused) return "未选择超话 · 已暂停";
+  if (!data) return "查看并配置签到范围";
+  if (data.selection.mode === "selected")
+    return `自选 ${data.selection.topic_ids.length} 个超话`;
+  return data.scan?.complete
+    ? `全部 ${data.scan.items.length} 个关注超话`
+    : "全部关注的超话";
+}
+async function loadTopicSummaries(accounts) {
+  await Promise.allSettled(
+    accounts
+      .filter((account) => !topicSummaries.has(account.id))
+      .map(async (account) => {
+        const data = await api(
+          `/api/accounts/${encodeURIComponent(account.id)}/topics`,
+        );
+        topicSummaries.set(account.id, data);
+      }),
+  );
+}
 function accountRows(accounts) {
   if (!accounts.length)
     return empty(
       "连接你的第一个微博",
-      "扫码绑定后，为它设置每天的签到时间。",
+      "扫码绑定后，选择要签到的超话。",
       "qr",
       addButton(),
     );
   return accounts
-    .map(
-      (account) =>
-        `<div class="account-row"><div class="avatar">${escapeHTML((account.nickname || "微").slice(0, 1))}</div><div class="account-body"><div class="account-name"><strong>${escapeHTML(account.nickname || "微博用户")}</strong>${badge(account.login_status)}</div><div class="account-meta"><span class="mono">UID ${escapeHTML(account.uid)}</span><span>检测于 ${formatTime(account.last_checked)}</span></div><div class="account-meta">${account.busy ? "正在执行签到任务…" : account.last_result ? `最近签到：${escapeHTML(labels[account.last_result] || account.last_result)}` : "还没有签到记录"}</div></div><div class="account-controls"><button class="button small ghost" data-action="topics" data-id="${escapeHTML(account.id)}">关注超话</button>${account.login_status === "expired" ? `<button class="button small secondary" data-action="bind">重新扫码</button>` : `<button class="button small ghost" data-action="check" data-id="${escapeHTML(account.id)}" ${account.busy ? "disabled" : ""}>检测登录</button>`}<button class="button small secondary" data-action="checkin" data-id="${escapeHTML(account.id)}" ${account.busy || account.topics_paused || account.last_success_date === today() ? "disabled" : ""}>${account.topics_paused ? "未选择超话" : account.last_success_date === today() ? "今日已签到" : account.busy ? "执行中…" : "签到"}</button></div></div>`,
-    )
+    .map((account) => {
+      const done = account.last_success_date === today();
+      const expired = account.login_status === "expired";
+      const status = account.busy
+        ? "running"
+        : done
+          ? "success"
+          : expired
+            ? "expired"
+            : account.topics_paused
+              ? "paused"
+              : "waiting";
+      const result = account.busy
+        ? "正在签到"
+        : done
+          ? "今日已完成"
+          : expired
+            ? "需要重新登录"
+            : account.topics_paused
+              ? "签到已暂停"
+              : "今日待签到";
+      const note = account.busy
+        ? "任务执行中，稍后自动更新"
+        : done
+          ? "所选范围已全部签到"
+          : expired
+            ? "扫码后可继续签到"
+            : account.topics_paused
+              ? "配置超话后即可恢复"
+              : ["partial", "failed", "network_error", "interrupted"].includes(
+                    account.last_result,
+                  )
+                ? `最近${labels[account.last_result]}，可重试`
+                : "按计划执行，也可手动签到";
+      return `<article class="workspace-account"><div class="account-identity"><div class="avatar">${escapeHTML((account.nickname || "微").slice(0, 1))}</div><div class="account-body"><div class="account-name"><strong>${escapeHTML(account.nickname || "微博用户")}</strong>${badge(account.login_status)}</div><div class="account-scope">${escapeHTML(scopeSummary(account))}</div><div class="account-uid mono">UID ${escapeHTML(account.uid)}</div></div></div><div class="account-outcome ${status}"><strong>${icon(account.busy ? "clock" : done ? "check" : expired ? "alert" : "clock")}${result}</strong><p>${escapeHTML(note)}</p></div><div class="account-row-actions"><div class="actions"><button class="button secondary" data-action="topics" data-id="${escapeHTML(account.id)}">配置签到</button>${expired ? `<button class="button" data-action="bind">重新扫码</button>` : `<button class="button" data-action="checkin" data-id="${escapeHTML(account.id)}" ${account.busy || account.topics_paused || done ? "disabled" : ""}>${done ? "今日已签到" : account.busy ? "执行中…" : "签到"}</button>`}</div><div class="account-secondary-actions"><button class="account-detail-link" data-action="account-runs" data-id="${escapeHTML(account.id)}">签到记录 ${icon("arrow")}</button><button class="account-detail-link" data-action="check" data-id="${escapeHTML(account.id)}">检测登录</button>${expired ? "" : '<button class="account-detail-link" data-action="bind">重新扫码</button>'}</div></div></article>`;
+    })
     .join("");
+}
+function planSummary(plan) {
+  return `<div class="plan-summary-icon">${icon("clock")}</div><div class="plan-summary-text"><div><strong>每日自动签到</strong><span class="badge ${plan.enabled ? "valid" : ""}">${plan.enabled ? "已开启" : "已暂停"}</span></div><p>${plan.enabled ? `每天 <b class="mono">${escapeHTML(plan.time)}</b>` : `计划时间 ${escapeHTML(plan.time)}`}<span>北京时间 · 全部绑定账号</span></p></div><button class="button secondary small" data-action="plan">修改计划</button>`;
+}
+function recentActivity(data) {
+  if (!data.items.length)
+    return `<p class="activity-empty">还没有执行记录，完成首次签到后会显示在这里。</p>`;
+  return `<div class="activity-list">${data.items
+    .slice(0, 3)
+    .map(
+      (run) =>
+        `<div class="activity-row"><span class="activity-mark ${escapeHTML(run.status)}">${icon(run.status === "success" ? "check" : "clock")}</span><div class="activity-copy"><strong>${escapeHTML(run.nickname || "微博用户")}</strong><p>${run.trigger === "scheduled" ? "自动签到" : "手动签到"} · 已签 ${Number(run.done_before)} / 新签 ${Number(run.success)} / 失败 ${Number(run.failed)}</p></div>${badge(run.status)}<time class="mono">${formatTime(run.started_at)}</time></div>`,
+    )
+    .join("")}</div>`;
 }
 function creditForm(props) {
   return `<div data-credit-form="${props.kind}" data-props="${escapeHTML(JSON.stringify(props))}"></div>`;
@@ -212,23 +355,6 @@ function creditForm(props) {
 function planForm(plan) {
   return creditForm({ kind: "plan", plan });
 }
-function planCard(plan) {
-  return `<div class="card"><div class="card-heading"><h2>每日计划</h2>${icon("clock")}</div><div class="plan-content">${planForm(plan)}<p class="muted">失败后间隔 10 分钟重试，当日自动执行最多 3 次。暂停后不再新建自动任务。</p></div></div>`;
-}
-function workspaceStats(stats) {
-  return (
-    stat("绑定的微博", stats.accounts, "账号仅归属当前平台用户", "users") +
-    stat("今日成功", stats.success, "账号执行次数", "check") +
-    stat("今日新签超话", stats.topics_signed, "不含本次检测前已签到", "grid") +
-    stat(
-      "需要关注",
-      stats.expired + stats.errors,
-      "当前登录失效或检测异常账号",
-      "alert",
-    )
-  );
-}
-
 function table(
   columns,
   rows,
@@ -276,51 +402,94 @@ function runTable(data, pager = true) {
     },
   );
 }
+function personalRunTable(data) {
+  if (!data.items.length)
+    return empty("没有符合条件的签到记录", "试试调整日期、微博 UID 或执行结果。", "list", "", true);
+  const columns = ["微博账号", "执行时间", "结果", "已签 / 新签 / 失败", "触发方式", "说明", "操作"];
+  const rows = data.items.map((run, index) => {
+    const account = escapeHTML(run.nickname || "微博用户");
+    const time = formatTime(run.started_at, true);
+    return `<tr><td><strong class="run-account-name" title="${account}">${account}</strong><span class="secondary-text mono">${escapeHTML(run.uid)}</span></td><td class="run-time mono">${time}</td><td>${badge(run.status)}</td><td class="mono">${run.done_before} / ${run.success} / ${run.failed}</td><td>${run.trigger === "scheduled" ? "定时" : "手动"}</td><td class="run-note"><span title="${escapeHTML(run.message)}">${escapeHTML(run.message || "—")}</span></td><td><button type="button" class="button ghost small run-detail-button" data-run-index="${index}" aria-haspopup="dialog" aria-label="查看详情：${account} ${time}">${icon("list")}<span>详情</span></button></td></tr>`;
+  });
+  return `<div class="run-table-frame"><table class="personal-run-table" aria-label="签到执行明细"><thead><tr>${columns.map((column) => `<th scope="col">${column}</th>`).join("")}</tr></thead><tbody>${rows.join("")}</tbody></table></div>`;
+}
+function runPager(data) {
+  const lastPage = Math.max(1, Math.ceil(data.total / data.page_size));
+  return `<div class="run-pager"><span>${data.total} 条记录</span><nav class="run-page-stepper" aria-label="签到记录分页"><button type="button" data-action="previous" aria-label="上一页" ${data.page <= 1 ? "disabled" : ""}>‹</button><span class="mono" aria-label="第 ${data.page} 页，共 ${lastPage} 页">${data.page}/${lastPage}</span><button type="button" data-action="next" aria-label="下一页" ${data.page >= lastPage ? "disabled" : ""}>›</button></nav><button type="button" class="button secondary small run-refresh" data-action="refresh" aria-label="刷新签到记录" title="刷新签到记录">${icon("refresh")}</button></div>`;
+}
+function runReceipt(run) {
+  const row = (label, value) => `<div><dt>${label}</dt><dd>${value}</dd></div>`;
+  return `<div class="run-receipt-paper">
+    <button type="button" class="button ghost small run-receipt-close" data-close-receipt aria-label="关闭签到详情" autofocus>×</button>
+    <header class="run-receipt-header"><h2 id="run-receipt-title">签到详情</h2><p class="mono">${formatTime(run.started_at, true)} · 北京时间</p></header>
+    <div class="run-receipt-total"><span>本次新签超话</span><strong>${run.success}</strong></div>
+    <dl class="run-receipt-fields">
+      ${row("微博账号", escapeHTML(run.nickname || "微博用户"))}
+      ${row("微博 UID", `<span class="mono">${escapeHTML(run.uid)}</span>`)}
+      ${row("执行结果", badge(run.status))}
+      ${row("触发方式", run.trigger === "scheduled" ? "定时签到" : "手动签到")}
+      ${row("签到汇总", `此前已签 ${run.done_before} · 失败 ${run.failed} · 共 ${run.total}`)}
+      ${run.message ? row("说明", escapeHTML(run.message)) : ""}
+    </dl>
+    <section class="run-receipt-topics" aria-labelledby="run-receipt-topics-title"><h3 id="run-receipt-topics-title">超话明细</h3>${creditForm({ kind: "run-topics", runId: run.id, embedded: true })}</section>
+  </div>`;
+}
+function mountRunReceipt(records, runs) {
+  const dialog = $("run-receipt");
+  records.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-run-index]");
+    if (!button || dialog.open) return;
+    const run = runs[Number(button.dataset.runIndex)];
+    if (!run) return;
+    unmountControls(dialog);
+    dialog.innerHTML = runReceipt(run);
+    dialog.showModal();
+    mountControls(dialog);
+  });
+  dialog.addEventListener("click", (event) => {
+    if (event.target === dialog || event.target.closest("[data-close-receipt]"))
+      dialog.close();
+  });
+  dialog.addEventListener("close", () => {
+    if (dialog.open) return;
+    unmountControls(dialog);
+    dialog.replaceChildren();
+  });
+}
+function personalRunStats(stats) {
+  const tile = (label, value, symbol, tone = "") =>
+    `<div class="run-stat-tile"><div>${label}<span class="run-stat-icon ${tone}">${icon(symbol)}</span></div><strong>${escapeHTML(value)}</strong></div>`;
+  return tile("范围内执行", stats.runs, "list") +
+    tile("成功执行", stats.success, "check", "success") +
+    tile("异常执行", stats.partial + stats.failed, "alert", "failed") +
+    tile("新签超话", stats.topics_signed, "grid", "signed");
+}
+function calendarAccounts() {
+  return accountsCache.map(({ id, uid, nickname }) => ({ id, uid, nickname }));
+}
 async function loadWorkspace(sequence) {
-  const [accounts, settings, stats, runs] = await Promise.all([
+  const [accounts, settings, runs] = await Promise.all([
     api("/api/accounts"),
     api("/api/settings"),
-    api("/api/stats"),
-    api("/api/runs?page_size=5"),
+    api("/api/runs?page_size=3"),
   ]);
   if (sequence !== renderId) return;
   accountsCache = accounts.accounts;
+  planCache = settings.plan;
   workspaceDay = today();
   $("main").innerHTML =
-    `<section>${heading("我的工作台", "账号、计划与结果，一处查看。", addButton())}<div id="workspace-stats" class="stats">${workspaceStats(stats)}</div><div class="workspace-grid"><div class="stack"><div class="card"><div class="card-heading"><div><h2>我的微博 <span class="badge" id="account-count">${accountsCache.length} 个</span></h2><p>一个平台账号，可以连接多个微博。</p></div>${icon("users")}</div><div class="account-list" id="account-list">${accountRows(accountsCache)}</div></div><div class="card"><div class="card-heading"><div><h2>最近签到</h2><p>最近 5 次账号执行记录</p></div><a class="button ghost small" href="#runs">查看全部 →</a></div><div id="recent-runs">${runTable(runs, false)}</div></div></div><div class="stack">${planCard(settings.plan)}<div class="card info-card"><h3>${icon("shield")}登录状态维护</h3><p>服务每 6 小时检测微博登录。登录失效后，重新扫码即可更新原绑定，不会新增重复账号。</p><div class="info-row"><span class="muted">账号归属</span><span>每个微博仅归属一人</span></div><div class="info-row"><span class="muted">微博密码</span><span>无需提供或保存</span></div></div></div></div><div class="card section-gap">${creditForm({ kind: "topics", accounts: accountsCache.map(({ id, uid, nickname }) => ({ id, uid, nickname })) })}</div><div class="card section-gap">${creditForm({ kind: "calendar", accounts: accountsCache.map(({ id, uid, nickname }) => ({ id, uid, nickname })) })}</div>${footer()}</section>`;
-}
-function refreshRunTable(container, data) {
-  // Keep existing React islands mounted while the surrounding totals update.
-  const ids = new Set(data.items.map((run) => run.id));
-  const retained = new Map();
-  const focused = container.contains(document.activeElement)
-    ? document.activeElement
-    : null;
-  container
-    .querySelectorAll('[data-credit-form="run-topics"]')
-    .forEach((host) => {
-      const { runId } = JSON.parse(host.dataset.props);
-      if (ids.has(runId)) {
-        retained.set(runId, host);
-        host.remove();
-      }
-    });
-  unmountControls(container);
-  container.innerHTML = runTable(data, false);
-  container
-    .querySelectorAll('[data-credit-form="run-topics"]')
-    .forEach((host) => {
-      const { runId } = JSON.parse(host.dataset.props);
-      if (retained.has(runId)) host.replaceWith(retained.get(runId));
-    });
-  mountControls(container);
-  if (focused?.isConnected) focused.focus({ preventScroll: true });
+    `<section class="workspace-home">${heading("我的签到", "选好超话，每天自动打卡。", addButton())}<div data-credit-form="footprint" data-props="${escapeHTML(JSON.stringify({ accounts: calendarAccounts() }))}"></div><div class="plan-summary" id="plan-summary">${planSummary(planCache)}</div><div class="workspace-accounts-heading"><h2>我的微博 <span class="badge" id="account-count">${accountsCache.length} 个</span></h2><span class="workspace-date mono">${today().replaceAll("-", ".")}</span></div><div class="card account-list" id="account-list">${accountRows(accountsCache)}</div><div class="workspace-activity"><div class="workspace-activity-heading"><h2>最近动态</h2><a class="account-detail-link" href="#runs">全部记录 ${icon("arrow")}</a></div><div id="recent-activity">${recentActivity(runs)}</div></div>${footer()}</section>`;
+  loadTopicSummaries(accountsCache).then(() => {
+    if (sequence === renderId && $("account-list"))
+      $("account-list").innerHTML = accountRows(accountsCache);
+  });
 }
 async function loadSettings(sequence) {
   const data = await api("/api/settings");
   if (sequence !== renderId) return;
+  planCache = data.plan;
   $("main").innerHTML =
-    `<section>${heading("每日计划", "选好每天的时间，其余交给计划。")}<div class="settings-grid"><div class="card"><div class="card-heading"><h2>自动签到</h2><span id="plan-state" class="badge ${data.plan.enabled ? "valid" : ""}">${data.plan.enabled ? "已开启" : "已暂停"}</span></div><div class="settings-form">${planForm(data.plan)}</div></div><div class="card info-card"><h3>${icon("clock")}计划如何执行</h3><p>统一使用北京时间，对你名下的全部微博生效。服务重启后，会补执行当天已到时间、尚未成功的账号。</p><div class="detail-list"><div><span>执行频率</span><span>每天一次</span></div><div><span>自动重试</span><span>间隔 10 分钟，最多 3 次</span></div><div><span>历史漏签</span><span>不补执行过去日期</span></div><div><span>暂停计划</span><span>不影响已开始的任务</span></div></div></div></div>${footer()}</section>`;
+    `<section class="client-profile">${heading("我的", "管理每日计划和个人偏好。")}<div class="profile-identity"><div class="avatar">${escapeHTML(user.username.slice(0, 1).toUpperCase())}</div><div><h2>${escapeHTML(user.username)}</h2><p>${user.role === "admin" ? "平台管理员" : "平台用户"}</p></div></div><div class="profile-grid"><div class="card"><div class="card-heading"><h2>每日计划</h2><span id="plan-state" class="badge ${data.plan.enabled ? "valid" : ""}">${data.plan.enabled ? "已开启" : "已暂停"}</span></div><div class="settings-form">${planForm(data.plan)}<details class="plan-guide"><summary>计划如何执行</summary><p>按北京时间对全部绑定微博执行，当天已到时间且尚未成功的账号会补执行。失败间隔 10 分钟自动重试，每日最多 3 次；暂停不影响已开始的任务。</p></details></div></div><div class="profile-preferences"><div class="card"><div class="card-heading"><h2>外观</h2></div><div class="profile-appearance" data-credit-form="appearance"></div></div><div class="card profile-actions">${user.role === "admin" ? `<a href="/admin" class="profile-action">${icon("shield")}管理控制台${icon("arrow")}</a>` : ""}<button class="profile-action" data-action="logout">${icon("logout")}退出登录${icon("arrow")}</button></div></div></div></section>`;
 }
 function filterForm(type) {
   const active = filters[type] || { start: today(), end: today() };
@@ -366,8 +535,10 @@ function query(type) {
 }
 async function loadRecords(type, sequence) {
   const logMode = type === "logs";
-  $("main").innerHTML =
-    `<section>${heading(logMode ? "运行日志" : "签到记录", logMode ? "追踪认证、绑定、计划与任务事件。" : "按账号、日期和结果定位每一次执行。", refreshButton())}<div class="card"><div class="card-heading"><h2>${logMode ? "事件明细" : "执行明细"}</h2><span class="muted">北京时间</span></div>${filterForm(type)}${logMode ? "" : '<div class="stats range-stats" id="range-stats"></div>'}<div id="records-table"><div class="loading-line">正在加载记录…</div></div></div>${footer()}</section>`;
+  const personal = !isAdmin && !logMode;
+  $("main").innerHTML = personal
+    ? `<section class="personal-runs">${heading("签到记录", "")}<section aria-label="签到统计"><h2>数据概览</h2><div class="run-stats" id="range-stats" aria-live="polite"></div></section><section class="run-records" aria-labelledby="run-records-title"><h2 id="run-records-title">执行明细</h2><div class="run-toolbar">${filterForm(type)}<div id="run-pager"></div></div><div id="records-table"><div class="loading-line">正在加载记录…</div></div></section><dialog class="run-receipt" id="run-receipt" aria-labelledby="run-receipt-title"></dialog></section>`
+    : `<section>${heading(logMode ? "运行日志" : "签到记录", logMode ? "追踪认证、绑定、计划与任务事件。" : "按账号、日期和结果定位每一次执行。", refreshButton())}<div class="card"><div class="card-heading"><h2>${logMode ? "事件明细" : "执行明细"}</h2><span class="muted">北京时间</span></div>${filterForm(type)}${logMode ? "" : '<div class="stats range-stats" id="range-stats"></div>'}<div id="records-table"><div class="loading-line">正在加载记录…</div></div></div>${footer()}</section>`;
   const params = query(type);
   const prefix = `/api/${isAdmin ? "admin/" : ""}`;
   const [data, stats] = await Promise.all([
@@ -379,6 +550,14 @@ async function loadRecords(type, sequence) {
         ),
   ]);
   if (sequence !== renderId) return;
+  if (personal) {
+    const records = $("records-table");
+    $("range-stats").innerHTML = personalRunStats(stats);
+    $("run-pager").innerHTML = runPager(data);
+    records.innerHTML = personalRunTable(data);
+    mountRunReceipt(records, data.items);
+    return;
+  }
   if (!logMode) {
     $("records-table").innerHTML = runTable(data);
     $("range-stats").innerHTML =
@@ -472,7 +651,8 @@ async function render() {
     if (link.dataset.view === view) link.setAttribute("aria-current", "page");
     else link.removeAttribute("aria-current");
   });
-  $("breadcrumb").textContent = nav.find(([id]) => id === view)[1];
+  if ($("breadcrumb"))
+    $("breadcrumb").textContent = nav.find(([id]) => id === view)[1];
   unmountControls($("main"));
   $("main").innerHTML =
     '<div class="loading-line" role="status">正在加载…</div>';
@@ -495,10 +675,9 @@ async function refreshLive() {
   if (view !== "home" || refreshPending || document.hidden) return;
   refreshPending = true;
   try {
-    const [accounts, stats, runs] = await Promise.all([
+    const [accounts, runs] = await Promise.all([
       api("/api/accounts"),
-      api("/api/stats"),
-      api("/api/runs?page_size=5"),
+      api("/api/runs?page_size=3"),
     ]);
     if (view !== "home" || !$("account-list")) return;
     accountsCache = accounts.accounts;
@@ -506,19 +685,15 @@ async function refreshLive() {
     $("account-list").innerHTML = accountRows(accountsCache);
     if ($("account-count"))
       $("account-count").textContent = `${accountsCache.length} 个`;
-    $("workspace-stats").innerHTML = workspaceStats(stats);
-    refreshRunTable($("recent-runs"), runs);
+    $("recent-activity").innerHTML = recentActivity(runs);
     document.dispatchEvent(
       new CustomEvent("credit:calendar-refresh", {
-        detail: {
-          accounts: accountsCache.map(({ id, uid, nickname }) => ({
-            id,
-            uid,
-            nickname,
-          })),
-        },
+        detail: { accounts: calendarAccounts() },
       }),
     );
+    await loadTopicSummaries(accountsCache);
+    if (view === "home" && $("account-list"))
+      $("account-list").innerHTML = accountRows(accountsCache);
   } catch (error) {
     toast(error.message);
   } finally {
@@ -564,6 +739,7 @@ async function pollQR() {
     if (!$("qr-dialog").open || generation !== qrGeneration) return;
     if (result.status === "confirmed") {
       $("qr-dialog").close();
+      topicSummaries.clear();
       toast("微博绑定成功");
       if (view === "home") await refreshLive();
       else await render();
@@ -598,20 +774,23 @@ $("qr-dialog").addEventListener("close", () => {
   qrId = null;
 });
 $("qr-retry").addEventListener("click", startQR);
+function applyTheme(dark) {
+  document.documentElement.classList.toggle("dark", dark);
+  try {
+    localStorage.setItem("weibo-theme", dark ? "dark" : "light");
+  } catch (_) {
+    /* Keep the visible preference. */
+  }
+}
+document.addEventListener("credit:theme", (event) =>
+  applyTheme(event.detail.dark),
+);
 $("app").addEventListener("click", async (event) => {
   const button = event.target.closest("[data-action]");
   if (!button || button.disabled) return;
   const { action, id, name } = button.dataset;
   if (action === "theme") {
-    document.documentElement.classList.toggle("dark");
-    try {
-      localStorage.setItem(
-        "weibo-theme",
-        document.documentElement.classList.contains("dark") ? "dark" : "light",
-      );
-    } catch (_) {
-      /* Theme is still applied. */
-    }
+    applyTheme(!document.documentElement.classList.contains("dark"));
     return;
   }
   if (action === "menu") {
@@ -632,11 +811,37 @@ $("app").addEventListener("click", async (event) => {
     updateSidebarToggle();
     return;
   }
-  if (action === "topics") {
+  if (action === "account-runs") {
+    const account = accountsCache.find((item) => item.id === id);
+    if (!account) return;
+    filters.runs = { uid: account.uid, start: "", end: "" };
+    pages.runs = 1;
+    window.scrollTo(0, 0);
+    location.hash = "runs";
+    return;
+  }
+  if (action === "topics" || action === "day-details" || action === "plan") {
+    const account = accountsCache.find((item) => item.id === id);
+    if (action !== "plan" && !account) return;
+    if (action === "day-details" && !button.dataset.date) return;
     document.dispatchEvent(
-      new CustomEvent("credit:topics-select", { detail: { id } }),
+      new CustomEvent("credit:account-panel", {
+        detail: {
+          opener: button,
+          panel: action === "plan"
+            ? { kind: "plan", plan: planCache }
+            : {
+                kind: action,
+                date: button.dataset.date,
+                account: {
+                  id: account.id,
+                  uid: account.uid,
+                  nickname: account.nickname,
+                },
+              },
+        },
+      }),
     );
-    $("followed-topics")?.scrollIntoView({ block: "start" });
     return;
   }
   if (action === "bind") {
@@ -644,7 +849,7 @@ $("app").addEventListener("click", async (event) => {
     return;
   }
   if (action === "refresh") {
-    if (!$("breadcrumb")) location.reload();
+    if (!$("main")) location.reload();
     else await render();
     return;
   }
@@ -703,6 +908,8 @@ $("app").addEventListener("credit:filters", async (event) => {
 });
 $("app").addEventListener("credit:plan-saved", (event) => {
   const plan = event.detail;
+  planCache = plan;
+  if ($("plan-summary")) $("plan-summary").innerHTML = planSummary(plan);
   if ($("plan-state")) {
     $("plan-state").textContent = plan.enabled ? "已开启" : "已暂停";
     $("plan-state").className = `badge ${plan.enabled ? "valid" : ""}`;
@@ -715,7 +922,21 @@ $("app").addEventListener("credit:user-created", async (event) => {
   toast("用户已创建");
   if (view === "users") await render();
 });
-document.addEventListener("credit:topics-saved", () => refreshLive());
+document.addEventListener("credit:topics-saved", (event) => {
+  const { accountId, selection } = event.detail;
+  topicSummaries.set(accountId, {
+    ...topicSummaries.get(accountId),
+    selection,
+  });
+  toast("签到范围已保存");
+  refreshLive();
+});
+document.addEventListener("credit:topics-loaded", (event) => {
+  const { accountId, ...data } = event.detail;
+  topicSummaries.set(accountId, data);
+  if (view === "home" && $("account-list"))
+    $("account-list").innerHTML = accountRows(accountsCache);
+});
 window.addEventListener("hashchange", render);
 async function initialize() {
   try {

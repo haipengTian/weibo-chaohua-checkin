@@ -67,6 +67,9 @@
 .credit-controls [data-slot="label"] {
   line-height: 1.4;
 }
+.credit-controls [data-slot="switch"] {
+  padding: 0;
+}
 .credit-field {
   display: grid;
   gap: 7px;
@@ -168,13 +171,8 @@
   color: var(--muted-foreground);
   margin: 20px 0 16px;
 }
-.credit-auth-description {
-  color: var(--muted-foreground);
-  font-size: 12px;
-  margin-top: 9px;
-}
 .credit-auth-tabs {
-  margin: 24px 0 16px;
+  margin-bottom: 18px;
 }
 .credit-auth-form small {
   font-size: 11px;
