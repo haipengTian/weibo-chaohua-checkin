@@ -300,7 +300,9 @@ class Database:
                     ),
                 )
             if row:
-                conn.execute("DELETE FROM login_expirations WHERE account_id=?", (account_id,))
+                conn.execute(
+                    "DELETE FROM login_expirations WHERE account_id=?", (account_id,)
+                )
             self._log(
                 conn,
                 owner_id,
@@ -535,14 +537,16 @@ class Database:
                     (acc["id"], new_id(), now),
                 )
             elif status == "valid":
-                conn.execute("DELETE FROM login_expirations WHERE account_id=?", (acc["id"],))
+                conn.execute(
+                    "DELETE FROM login_expirations WHERE account_id=?", (acc["id"],)
+                )
             # A network error does not end a previously confirmed incident.
 
     def maibot_snapshot(self, uids, today):
         placeholders = ",".join("?" for _ in uids)
         with self.connect() as conn:
             rows = conn.execute(
-                f"""SELECT a.uid,a.nickname,a.login_status,p.enabled,p.time,
+                f"""SELECT a.id,a.uid,a.nickname,a.login_status,p.enabled,p.time,
                        CASE WHEN a.last_success_date=? OR EXISTS (
                          SELECT 1 FROM runs r LEFT JOIN run_scopes s ON s.run_id=r.id
                          WHERE r.account_id=a.id AND r.day=? AND r.status='success'
@@ -561,16 +565,61 @@ class Database:
                        WHERE a.uid IN ({placeholders}) ORDER BY a.created_at,a.uid""",
                 (today, today, today, *uids),
             ).fetchall()
+            latest_by_account = {}
+            if rows:
+                account_ids = [row["id"] for row in rows]
+                account_placeholders = ",".join("?" for _ in account_ids)
+                for run_row in conn.execute(
+                    f"""SELECT id,account_id,trigger,status,started_at,finished_at,
+                              total,done_before,success,failed,unknown,message
+                       FROM runs WHERE account_id IN ({account_placeholders}) AND day=?
+                       ORDER BY started_at DESC,id DESC""",
+                    (*account_ids, today),
+                ):
+                    latest_by_account.setdefault(run_row["account_id"], dict(run_row))
+            topics_by_run = {}
+            if latest_by_account:
+                run_ids = [run["id"] for run in latest_by_account.values()]
+                run_placeholders = ",".join("?" for _ in run_ids)
+                for topic_row in conn.execute(
+                    f"SELECT run_id,name,status FROM run_topics WHERE run_id IN ({run_placeholders}) ORDER BY run_id,position",
+                    run_ids,
+                ):
+                    topics_by_run.setdefault(topic_row["run_id"], []).append(
+                        {"name": topic_row["name"], "status": topic_row["status"]}
+                    )
         return [
             {
                 "uid": row["uid"],
                 "nickname": row["nickname"],
-                "login_status": "expired" if row["incident_id"] else row["login_status"],
+                "login_status": "expired"
+                if row["incident_id"]
+                else row["login_status"],
                 "today_status": row["today_status"] or "not_run",
                 "automatic": bool(row["enabled"] and not row["topics_paused"]),
                 "scheduled_time": row["time"],
-                "expiration": {"id": row["incident_id"], "detected_at": row["detected_at"]}
-                if row["incident_id"] else None,
+                "expiration": {
+                    "id": row["incident_id"],
+                    "detected_at": row["detected_at"],
+                }
+                if row["incident_id"]
+                else None,
+                "latest_run": {
+                    "id": run["id"],
+                    "trigger": run["trigger"],
+                    "status": run["status"],
+                    "started_at": run["started_at"],
+                    "finished_at": run["finished_at"],
+                    "total": run["total"],
+                    "done_before": run["done_before"],
+                    "success": run["success"],
+                    "failed": run["failed"],
+                    "unknown": run["unknown"],
+                    "message": run["message"],
+                    "topics": topics_by_run.get(run["id"], []),
+                }
+                if (run := latest_by_account.get(row["id"]))
+                else None,
             }
             for row in rows
         ]
@@ -732,7 +781,11 @@ class Database:
                 else "failed"
             )
             days.append(
-                {"date": day, "status": status, "attempts": row["attempts"] if row else 0}
+                {
+                    "date": day,
+                    "status": status,
+                    "attempts": row["attempts"] if row else 0,
+                }
             )
         return {
             "account_id": account_id,

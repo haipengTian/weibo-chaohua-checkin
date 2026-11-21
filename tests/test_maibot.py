@@ -13,35 +13,138 @@ AUTH = {"Authorization": f"Bearer {TOKEN}"}
 def test_authenticated_today_status_only_for_allowed_uids(monkeypatch, tmp_path):
     monkeypatch.delenv("MAIBOT_READ_TOKEN", raising=False)
     monkeypatch.delenv("MAIBOT_ACCOUNT_UIDS", raising=False)
-    app = create_app(tmp_path, admin_user="owner", admin_password="test-password-123", enable_scheduler=False)
+    app = create_app(
+        tmp_path,
+        admin_user="owner",
+        admin_password="test-password-123",
+        enable_scheduler=False,
+    )
     with TestClient(app) as client:
         assert client.get(STATUS, headers=AUTH).status_code == 503
         monkeypatch.setenv("MAIBOT_READ_TOKEN", TOKEN)
         assert client.get(STATUS, headers=AUTH).status_code == 503
         monkeypatch.setenv("MAIBOT_ACCOUNT_UIDS", "10001,10003")
         assert client.get(STATUS).status_code == 401
-        assert client.get(STATUS, headers={"Authorization": "Bearer Wrong"}).status_code == 401
+        assert (
+            client.get(STATUS, headers={"Authorization": "Bearer Wrong"}).status_code
+            == 401
+        )
         db = app.state.db
         owner = db.user_by_name("owner")
         other = db.create_user("another", "test-password-123")
         one = db.bind_account(owner["id"], "10001", "允许一", {"SUB": "private-cookie"})
         two = db.bind_account(other["id"], "10002", "拒绝二", {"SUB": "private-cookie"})
-        three = db.bind_account(owner["id"], "10003", "允许三", {"SUB": "private-cookie"})
+        three = db.bind_account(
+            owner["id"], "10003", "允许三", {"SUB": "private-cookie"}
+        )
         today = client.get(STATUS, headers=AUTH).json()["day"]
         with db.connect(write=True) as conn:
             conn.executemany(
-                "INSERT INTO runs(id,user_id,account_id,trigger,day,status,started_at) VALUES (?,?,?,?,?,?,?)",
+                """INSERT INTO runs(
+                    id,user_id,account_id,trigger,day,status,started_at,finished_at,
+                    total,done_before,success,failed,unknown,message
+                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 [
-                    ("1", owner["id"], one["id"], "manual", today, "partial", 10),
-                    ("2", other["id"], two["id"], "manual", today, "success", 15),
-                    ("3", owner["id"], three["id"], "manual", "2026-01-01", "success", 20),
+                    (
+                        "run-old",
+                        owner["id"],
+                        one["id"],
+                        "scheduled",
+                        today,
+                        "failed",
+                        5,
+                        6,
+                        1,
+                        0,
+                        0,
+                        1,
+                        0,
+                        "旧失败",
+                    ),
+                    (
+                        "1",
+                        owner["id"],
+                        one["id"],
+                        "manual",
+                        today,
+                        "partial",
+                        10,
+                        15,
+                        3,
+                        1,
+                        1,
+                        1,
+                        0,
+                        "部分成功",
+                    ),
+                    (
+                        "2",
+                        other["id"],
+                        two["id"],
+                        "manual",
+                        today,
+                        "success",
+                        15,
+                        20,
+                        1,
+                        0,
+                        1,
+                        0,
+                        0,
+                        "忽略",
+                    ),
+                    (
+                        "3",
+                        owner["id"],
+                        three["id"],
+                        "manual",
+                        "2026-01-01",
+                        "success",
+                        20,
+                        25,
+                        1,
+                        0,
+                        1,
+                        0,
+                        0,
+                        "历史",
+                    ),
+                ],
+            )
+            conn.executemany(
+                "INSERT INTO run_topics(run_id,position,name,status) VALUES (?,?,?,?)",
+                [
+                    ("1", 1, "第二超话", "failed"),
+                    ("1", 0, "第一超话", "success"),
+                    ("run-old", 0, "旧超话", "failed"),
                 ],
             )
         response = client.get(STATUS, headers=AUTH)
         assert response.status_code == 200
         assert response.headers["cache-control"] == "no-store"
         rows = {row["uid"]: row for row in response.json()["accounts"]}
-        assert {uid: row["today_status"] for uid, row in rows.items()} == {"10001": "partial", "10003": "not_run"}
+        assert {uid: row["today_status"] for uid, row in rows.items()} == {
+            "10001": "partial",
+            "10003": "not_run",
+        }
+        assert rows["10001"]["latest_run"] == {
+            "id": "1",
+            "trigger": "manual",
+            "status": "partial",
+            "started_at": 10.0,
+            "finished_at": 15.0,
+            "total": 3,
+            "done_before": 1,
+            "success": 1,
+            "failed": 1,
+            "unknown": 0,
+            "message": "部分成功",
+            "topics": [
+                {"name": "第一超话", "status": "success"},
+                {"name": "第二超话", "status": "failed"},
+            ],
+        }
+        assert rows["10003"]["latest_run"] is None
         assert "private-cookie" not in response.text and "拒绝二" not in response.text
         assert client.get("/api/accounts", headers=AUTH).status_code == 401
 
@@ -77,8 +180,14 @@ def test_accounts_already_expired_are_available_after_upgrade(tmp_path):
     owner = db.create_user("owner", "test-password-123")
     account = db.bind_account(owner["id"], "10001", "微博", {"SUB": "old"})
     with db.connect(write=True) as conn:
-        conn.execute("UPDATE accounts SET login_status='expired',last_checked=123 WHERE id=?", (account["id"],))
+        conn.execute(
+            "UPDATE accounts SET login_status='expired',last_checked=123 WHERE id=?",
+            (account["id"],),
+        )
     db = Database(tmp_path)
     expired = db.maibot_snapshot(["10001"], "2026-11-18")[0]["expiration"]
     assert expired["detected_at"] == 123
-    assert Database(tmp_path).maibot_snapshot(["10001"], "2026-11-18")[0]["expiration"] == expired
+    assert (
+        Database(tmp_path).maibot_snapshot(["10001"], "2026-11-18")[0]["expiration"]
+        == expired
+    )
