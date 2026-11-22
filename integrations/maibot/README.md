@@ -2,45 +2,34 @@
 
 私聊或在授权群内向麦麦发 `/微博签到`（支持 `异常`、`详情`、`测试通知`、`help`），即可查看授权微博账号今天（北京时间）的签到结果与超话明细。每次签到完成或微博登录确认失效后，麦麦也会主动将通知发到你指定的 QQ 私聊或群。面板和麦麦之间只传状态，不传微博 Cookie；麦麦无需开放新的公网端口。
 
-## 1. 启用或更新签到面板的只读接口
+## 1. 在管理端启用并配置麦麦集成
 
-面板和麦麦插件都随 `ghcr.io/haipengtian/weibo-chaohua-checkin:portal-v0.1.6` 发布。已有面板先备份配置和数据，然后在服务器 `/opt/weibo-portal/.env.portal` 更新 `PORTAL_IMAGE` 并确认以下配置：
-
-```dotenv
-PORTAL_IMAGE=ghcr.io/haipengtian/weibo-chaohua-checkin:portal-v0.1.6
-MAIBOT_READ_TOKEN=替换为随机密钥
-MAIBOT_ACCOUNT_UIDS=替换为允许机器人查询和提醒的微博UID
-```
-
-在自己的终端用 `openssl rand -hex 32` 生成密钥。UID 是面板账号卡片上的**微博 UID**，不是 QQ 号；多个用英文逗号隔开（最多 50 个），不支持通配符。未同时配置有效密钥和 UID 时接口关闭。不要在群聊、日志或 Git 中粘贴密钥。
-
-新版 `compose.portal.yaml` 已声明这两项容器环境变量。如果线上仍在用最初安装的 `compose.yaml`，将下面的内容新增到同目录的 `compose.override.yaml`（已有文件时合并，保留原配置）：
-
-```yaml
-services:
-  weibo-portal:
-    environment:
-      MAIBOT_READ_TOKEN: ${MAIBOT_READ_TOKEN:-}
-      MAIBOT_ACCOUNT_UIDS: ${MAIBOT_ACCOUNT_UIDS:-}
-```
-
-执行以下命令，只更新面板容器，继续挂载原 `portal-data/`：
+面板和麦麦插件都随 `ghcr.io/haipengtian/weibo-chaohua-checkin:portal-v0.1.7` 发布。先将面板更新到新版镜像（保留原 `portal-data/`）：
 
 ```bash
 cd /opt/weibo-portal &&
+sed -i 's|^PORTAL_IMAGE=.*|PORTAL_IMAGE=ghcr.io/haipengtian/weibo-chaohua-checkin:portal-v0.1.7|' .env.portal &&
 docker compose --env-file .env.portal pull weibo-portal &&
 docker compose --env-file .env.portal up -d --no-build --wait weibo-portal &&
 curl -fsS http://127.0.0.1:8787/healthz
 ```
 
+更新完成后，用管理员账号打开面板管理端 **「系统设置」→「麦麦集成」**：
+
+1. 开启 **启用麦麦只读接口**。
+2. 点击 **生成密钥**（或需要更换时点击 **重置密钥**），复制仅展示一次的明文密钥。不要在群聊、日志或 Git 中粘贴密钥。
+3. 在 **授权微博账号** 列表中勾选允许麦麦查询和提醒的微博账号（最多 50 个），点击 **保存麦麦配置**。
+
+> 兼容说明：如果之前已经在 `/opt/weibo-portal/.env.portal` 中配置过 `MAIBOT_READ_TOKEN` 和 `MAIBOT_ACCOUNT_UIDS`，升级后无需改配置文件即可无缝继续生效；在管理端点击 **保存麦麦配置** 或 **重置密钥** 后，对应配置即切换为管理端接管，不再受 `.env.portal` 环境变量影响。
+
 ## 2. 在麦麦安装或升级插件
 
-从 `portal-v0.1.6` 镜像提取 `_manifest.json`、`config.py`、`plugin.py`、`LICENSE` 到麦麦的 `runtime/plugins/haipengtian.weibo-checkin/` 目录。
+从 `portal-v0.1.7` 镜像提取 `_manifest.json`、`config.py`、`plugin.py`、`LICENSE` 到麦麦的 `runtime/plugins/haipengtian.weibo-checkin/` 目录。
 
-如果你从 `portal-v0.1.5` 升级，**只覆盖插件代码文件，保留原有的 `data/`（含 `delivered.json` 去重记录）和 WebUI 插件配置**，并仅重启麦麦主容器（不要重启适配器容器）。例如在 Linux 服务器：
+如果你从 `portal-v0.1.5` / `portal-v0.1.6` 升级：若麦麦插件已是 `portal-v0.1.6` 且本次未重置密钥，麦麦容器无需改动；如需提取或升级插件，**只覆盖插件代码文件，保留原有的 `data/`（含 `delivered.json` 去重记录）和 WebUI 插件配置**，并仅重启麦麦主容器（不要重启适配器容器）：
 
 ```bash
-IMAGE="ghcr.io/haipengtian/weibo-chaohua-checkin:portal-v0.1.6"
+IMAGE="ghcr.io/haipengtian/weibo-chaohua-checkin:portal-v0.1.7"
 PLUGIN_DIR="/opt/maibot-qq/runtime/plugins/haipengtian.weibo-checkin"
 CID=$(docker create --pull=never "$IMAGE") &&
 mkdir -p "$PLUGIN_DIR" &&
@@ -54,7 +43,7 @@ docker rm "$CID"
 
 | 配置 | 怎么填 |
 | --- | --- |
-| 面板地址、只读密钥 | 面板 HTTPS 地址（默认 `https://wb.thpvip.xyz`）和上一步生成的密钥 |
+| 面板地址、只读密钥 | 面板 HTTPS 地址（默认 `https://wb.thpvip.xyz`）和管理端生成的只读密钥 |
 | `query_qq` | 可使用 `/微博签到` 及其子命令的 QQ，默认为空 |
 | `query_groups` | 允许查询的群，默认为空；群内仍只响应 `query_qq` 里的发送人 |
 | `notify_qq` | 接收签到结果和登录失效提醒的 QQ 私聊号码，可填多个 |
@@ -85,7 +74,7 @@ docker rm "$CID"
 
 `GET /api/integrations/maibot/v1/status` 使用 `Authorization: Bearer <密钥>`。响应包含北京时间日期 `day`、授权账号 `accounts`，以及每个账号的 `today_status`、`login_status`、`automatic`、`scheduled_time`、当前失效事件 `expiration` 和今日最近一次执行 `latest_run`（含 `topics` 明细）。接口只读，不能触发签到或访问其他面板接口。
 
-- `401`：核对两端的密钥是否一致。
-- `503`：面板容器未收到有效密钥或 UID 名单。重查 Compose 环境变量配置，不要把完整配置输出到群聊。
-- 查询成功但没有账号：核对填写的 UID 是否已在面板绑定。
+- `401`：核对两端的密钥是否一致；在管理端重置密钥后需同步更新麦麦插件配置。
+- `503`：管理端尚未开启麦麦集成、未生成只读密钥，或尚未勾选任何授权微博账号。
+- 查询成功但没有账号：核对管理端勾选的 UID 是否仍处于绑定状态。
 - 查询正常但提醒发不出：发送 `/微博签到 测试通知` 排查接收人配置、机器人 QQ 连接及麦麦插件日志。

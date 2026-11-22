@@ -15,6 +15,16 @@ from pathlib import Path
 
 from portal_security import hash_password, token_digest
 
+MAIBOT_TOKEN_RE = re.compile(r"[A-Za-z0-9_-]{32,128}")
+MAIBOT_UID_RE = re.compile(r"[0-9]{1,32}")
+MAIBOT_MAX_UIDS = 50
+MAIBOT_META_KEYS = (
+    "maibot_enabled",
+    "maibot_uids",
+    "maibot_token_hash",
+    "maibot_token_updated_at",
+)
+
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS users (
  id TEXT PRIMARY KEY, username TEXT NOT NULL, name_key TEXT NOT NULL UNIQUE,
@@ -191,6 +201,176 @@ class Database:
                 "开启公开注册" if registration_enabled else "关闭公开注册",
             )
         return {"registration_enabled": registration_enabled}
+
+    @staticmethod
+    def _env_maibot():
+        token = os.environ.get("MAIBOT_READ_TOKEN", "")
+        token_valid = bool(MAIBOT_TOKEN_RE.fullmatch(token))
+        raw_uids = os.environ.get("MAIBOT_ACCOUNT_UIDS", "")
+        parsed = (
+            tuple(dict.fromkeys(uid.strip() for uid in raw_uids.split(",")))
+            if raw_uids.strip()
+            else ()
+        )
+        uids_valid = 0 < len(parsed) <= MAIBOT_MAX_UIDS and all(
+            MAIBOT_UID_RE.fullmatch(uid) for uid in parsed
+        )
+        return (
+            token if token_valid else "",
+            list(parsed) if uids_valid else [],
+        )
+
+    @classmethod
+    def _maibot_runtime_from_conn(cls, conn):
+        placeholders = ",".join("?" for _ in MAIBOT_META_KEYS)
+        meta = {
+            row["key"]: row["value"]
+            for row in conn.execute(
+                f"SELECT key,value FROM metadata WHERE key IN ({placeholders})",
+                MAIBOT_META_KEYS,
+            )
+        }
+        env_token, env_uids = cls._env_maibot()
+        if meta.get("maibot_token_hash"):
+            token_hash = meta["maibot_token_hash"]
+            token_source = "admin"
+            try:
+                token_updated_at = (
+                    float(meta["maibot_token_updated_at"])
+                    if "maibot_token_updated_at" in meta
+                    else None
+                )
+            except (TypeError, ValueError):
+                token_updated_at = None
+        elif env_token:
+            token_hash = token_digest(env_token)
+            token_source = "env"
+            token_updated_at = None
+        else:
+            token_hash = None
+            token_source = "none"
+            token_updated_at = None
+
+        if "maibot_uids" in meta:
+            try:
+                raw_saved = json.loads(meta["maibot_uids"])
+            except ValueError:
+                raw_saved = []
+            account_uids = [
+                uid
+                for uid in dict.fromkeys(
+                    raw_saved if isinstance(raw_saved, list) else []
+                )
+                if isinstance(uid, str) and MAIBOT_UID_RE.fullmatch(uid)
+            ][:MAIBOT_MAX_UIDS]
+        else:
+            account_uids = list(env_uids)
+
+        if "maibot_enabled" in meta:
+            enabled = meta["maibot_enabled"] == "true"
+            settings_source = "admin"
+        else:
+            enabled = bool(env_token and env_uids)
+            settings_source = "env" if enabled else "none"
+
+        return {
+            "enabled": enabled,
+            "account_uids": account_uids,
+            "token_configured": bool(token_hash),
+            "token_source": token_source,
+            "token_updated_at": token_updated_at,
+            "settings_source": settings_source,
+            "ready": bool(
+                enabled and token_hash and 0 < len(account_uids) <= MAIBOT_MAX_UIDS
+            ),
+            "token_hash": token_hash,
+        }
+
+    @staticmethod
+    def _maibot_public(runtime):
+        return {k: v for k, v in runtime.items() if k != "token_hash"}
+
+    def maibot_runtime(self):
+        with self.connect() as conn:
+            return self._maibot_runtime_from_conn(conn)
+
+    def maibot_config(self):
+        with self.connect() as conn:
+            return self._maibot_public(self._maibot_runtime_from_conn(conn))
+
+    def maibot_accounts(self):
+        with self.connect() as conn:
+            rows = conn.execute(
+                """SELECT a.id,a.uid,a.nickname,a.login_status,u.username,
+                          p.enabled AS plan_enabled,p.time AS scheduled_time,
+                          coalesce(t.mode='selected' AND t.topic_ids='[]',0) AS topics_paused,
+                          e.id AS incident_id
+                   FROM accounts a
+                   JOIN users u ON u.id=a.owner_id
+                   JOIN plans p ON p.owner_id=a.owner_id
+                   LEFT JOIN topic_preferences t ON t.account_id=a.id
+                   LEFT JOIN login_expirations e ON e.account_id=a.id
+                   ORDER BY u.name_key,a.created_at,a.uid"""
+            ).fetchall()
+        return [
+            {
+                "id": row["id"],
+                "uid": row["uid"],
+                "nickname": row["nickname"],
+                "username": row["username"],
+                "login_status": "expired"
+                if row["incident_id"]
+                else row["login_status"],
+                "automatic": bool(row["plan_enabled"] and not row["topics_paused"]),
+                "scheduled_time": row["scheduled_time"],
+            }
+            for row in rows
+        ]
+
+    def set_maibot_settings(self, enabled, account_uids, actor_id):
+        deduped = list(dict.fromkeys(account_uids))
+        if len(deduped) > MAIBOT_MAX_UIDS or any(
+            not isinstance(uid, str) or not MAIBOT_UID_RE.fullmatch(uid)
+            for uid in deduped
+        ):
+            raise ValueError("授权微博账号参数无效")
+        with self.connect(write=True) as conn:
+            conn.executemany(
+                "INSERT INTO metadata(key,value) VALUES (?,?) "
+                "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                [
+                    ("maibot_enabled", "true" if enabled else "false"),
+                    ("maibot_uids", json.dumps(deduped, ensure_ascii=False)),
+                ],
+            )
+            self._log(
+                conn,
+                actor_id,
+                None,
+                "system",
+                "success",
+                f"{'启用' if enabled else '停用'}麦麦集成，授权微博账号 {len(deduped)} 个",
+            )
+            return self._maibot_public(self._maibot_runtime_from_conn(conn))
+
+    def rotate_maibot_token(self, actor_id):
+        token = secrets.token_urlsafe(32)
+        digest = token_digest(token)
+        now = time.time()
+        with self.connect(write=True) as conn:
+            conn.executemany(
+                "INSERT INTO metadata(key,value) VALUES (?,?) "
+                "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                [
+                    ("maibot_token_hash", digest),
+                    ("maibot_token_updated_at", f"{now:.6f}"),
+                ],
+            )
+            self._log(conn, actor_id, None, "system", "success", "重置麦麦集成只读密钥")
+            return {
+                "token": token,
+                "config": self._maibot_public(self._maibot_runtime_from_conn(conn)),
+            }
 
     def user(self, user_id):
         with self.connect() as conn:

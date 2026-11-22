@@ -1,0 +1,281 @@
+.maibot-settings {
+  display: grid;
+  gap: 18px;
+}
+.maibot-status-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--secondary);
+}
+.maibot-status-main {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.maibot-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 550;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+.maibot-pill--ok {
+  color: var(--green);
+  background: var(--green-bg);
+}
+.maibot-pill--warn {
+  color: var(--amber);
+  background: var(--amber-bg);
+}
+.maibot-pill--bad {
+  color: var(--red);
+  background: var(--red-bg);
+}
+.maibot-pill--muted {
+  color: var(--muted-foreground);
+  background: var(--muted);
+}
+.maibot-env-note {
+  font-size: 12px;
+  color: var(--muted-foreground);
+}
+.maibot-dirty-tag {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--amber);
+}
+.maibot-inline-hint {
+  margin: -6px 0 0;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--amber);
+}
+.maibot-switch-row p {
+  font-size: 12px;
+  line-height: 1.6;
+}
+.maibot-section {
+  display: grid;
+  gap: 12px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+.maibot-section-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.maibot-section-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  margin: 0;
+}
+.maibot-section-desc {
+  margin: 4px 0 0;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--muted-foreground);
+}
+.maibot-counter {
+  font-size: 12px;
+  color: var(--muted-foreground);
+  white-space: nowrap;
+  padding-top: 2px;
+}
+.maibot-confirm-box {
+  display: grid;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--amber-bg);
+  font-size: 12px;
+  line-height: 1.6;
+}
+.maibot-confirm-box p {
+  margin: 0;
+  color: var(--foreground);
+}
+.maibot-confirm-actions {
+  display: flex;
+  gap: 8px;
+}
+.maibot-token-reveal {
+  display: grid;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--secondary);
+}
+.maibot-token-reveal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  font-size: 12px;
+}
+.maibot-token-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.maibot-token-code {
+  display: block;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--card);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  word-break: break-all;
+  user-select: all;
+}
+.maibot-token-note {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--muted-foreground);
+}
+.maibot-accounts-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.maibot-search {
+  position: relative;
+  flex: 1;
+  min-width: 200px;
+}
+.maibot-search > svg {
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--muted-foreground);
+  pointer-events: none;
+}
+.maibot-toolbar-actions {
+  display: flex;
+  gap: 6px;
+}
+.maibot-empty {
+  padding: 24px 12px;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--muted-foreground);
+}
+.credit-controls .maibot-account-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 320px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.maibot-account-list > li {
+  border-bottom: 1px solid var(--border);
+}
+.maibot-account-list > li:last-child {
+  border-bottom: 0;
+}
+.credit-controls .maibot-account-row {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 0.12s ease;
+}
+.credit-controls .maibot-account-row:hover:not(:disabled) {
+  background: var(--secondary);
+}
+.credit-controls .maibot-account-row:disabled {
+  opacity: 0.55;
+}
+.maibot-check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--card);
+}
+.maibot-account-row[aria-checked="true"] .maibot-check {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: var(--primary-foreground);
+}
+.maibot-account-main {
+  display: grid;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+.maibot-account-name {
+  font-size: 13px;
+  font-weight: 550;
+  color: var(--foreground);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.maibot-account-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 5px;
+  font-size: 11px;
+  color: var(--muted-foreground);
+}
+.maibot-mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+.maibot-footer {
+  display: grid;
+  gap: 10px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+.maibot-footer-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+@media (max-width: 640px) {
+  .maibot-search {
+    min-width: 100%;
+  }
+  .maibot-toolbar-actions {
+    width: 100%;
+    justify-content: flex-end;
+  }
+}

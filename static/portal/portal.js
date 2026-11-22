@@ -602,10 +602,13 @@ async function loadUsers(sequence) {
   );
 }
 async function loadSystemSettings(sequence) {
-  const data = await api("/api/admin/settings");
+  const [data, maibot] = await Promise.all([
+    api("/api/admin/settings"),
+    api("/api/admin/maibot"),
+  ]);
   if (sequence !== renderId) return;
   $("main").innerHTML =
-    `<section>${heading("系统设置", "管理平台的账号注册方式。")}<div class="settings-grid"><div class="card"><div class="card-heading"><h2>用户注册</h2></div><div class="settings-form">${creditForm({ kind: "system-settings", settings: data.settings })}</div></div></div>${footer()}</section>`;
+    `<section>${heading("系统设置", "管理平台的账号注册方式与麦麦机器人集成。")}<div class="settings-grid"><div class="card"><div class="card-heading"><h2>用户注册</h2></div><div class="settings-form">${creditForm({ kind: "system-settings", settings: data.settings })}</div></div><div class="card"><div class="card-heading"><div><h2>麦麦集成</h2><p>在管理端控制只读密钥与允许查询、推送提醒的微博账号</p></div></div><div class="settings-form">${creditForm({ kind: "maibot-settings", config: maibot.config, accounts: maibot.accounts })}</div></div></div>${footer()}</section>`;
 }
 function anomalyTable(items, pager = false, data = {}) {
   return table(

@@ -19,6 +19,8 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from portal_db import (
+    MAIBOT_MAX_UIDS,
+    MAIBOT_UID_RE,
     AccountBusy,
     BindingConflict,
     Database,
@@ -66,6 +68,20 @@ class PlanBody(BaseModel):
 class SystemSettingsBody(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
     registration_enabled: bool
+
+
+class MaiBotSettingsBody(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    enabled: bool
+    account_uids: list[str] = Field(max_length=MAIBOT_MAX_UIDS)
+
+    @field_validator("account_uids")
+    @classmethod
+    def valid_uids(cls, values):
+        deduped = list(dict.fromkeys(values))
+        if any(not MAIBOT_UID_RE.fullmatch(uid) for uid in deduped):
+            raise ValueError("微博 UID 格式无效")
+        return deduped
 
 
 class TopicPreferencesBody(BaseModel):
@@ -611,6 +627,25 @@ def create_app(
                 body.registration_enabled, user["id"]
             )
         }
+
+    @app.get("/api/admin/maibot")
+    def admin_maibot(user=Depends(administrator)):
+        return {
+            "config": app.state.db.maibot_config(),
+            "accounts": app.state.db.maibot_accounts(),
+        }
+
+    @app.put("/api/admin/maibot")
+    def update_admin_maibot(body: MaiBotSettingsBody, user=Depends(administrator)):
+        return {
+            "config": app.state.db.set_maibot_settings(
+                body.enabled, body.account_uids, user["id"]
+            )
+        }
+
+    @app.post("/api/admin/maibot/token")
+    def rotate_admin_maibot_token(user=Depends(administrator)):
+        return app.state.db.rotate_maibot_token(user["id"])
 
     @app.get("/api/admin/runs")
     def admin_runs(

@@ -13,6 +13,11 @@ import type { CalendarAccount } from "./checkin-data";
 import { CheckinFootprint } from "./checkin-footprint";
 import { FollowedTopics, RunTopics } from "./topics";
 import { AccountPanel } from "./account-panel";
+import {
+  MaiBotSettingsForm,
+  type MaiBotAccount,
+  type MaiBotConfig,
+} from "./maibot-settings";
 
 const roots = new Map<HTMLElement, Root>();
 
@@ -34,6 +39,16 @@ export function mountControls(container: ParentNode = document) {
       }
       if (host.dataset.creditForm === "login") {
         root.render(<LoginForm />);
+        return;
+      }
+      if (host.dataset.creditForm === "maibot-settings") {
+        const props = JSON.parse(host.dataset.props || "{}") as {
+          config: MaiBotConfig;
+          accounts: MaiBotAccount[];
+        };
+        root.render(
+          <MaiBotSettingsForm config={props.config} accounts={props.accounts} />,
+        );
         return;
       }
       if (host.dataset.creditForm === "footprint" || host.dataset.creditForm === "topics") {
