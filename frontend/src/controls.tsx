@@ -72,6 +72,7 @@ export function mountControls(container: ParentNode = document) {
             admin={props.admin}
             values={props.values}
             statuses={props.statuses}
+            accounts={props.accounts}
           />,
         );
       else if (props.kind === "users")

@@ -717,11 +717,12 @@ def create_app(
 
     @app.get("/api/admin/anomalies")
     def admin_anomalies(
+        kind: Literal["expired", "error", "run_failed"] | None = Query(None),
         page: int = Query(1, ge=1),
         page_size: int = Query(20, ge=1, le=100),
         user=Depends(administrator),
     ):
-        return app.state.db.anomalies(page=page, page_size=page_size)
+        return app.state.db.anomalies(kind=kind, page=page, page_size=page_size)
 
     return app
 

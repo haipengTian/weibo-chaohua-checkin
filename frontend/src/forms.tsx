@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,7 +12,13 @@ export type Plan = { enabled: boolean; time: string };
 export type SystemSettings = { registration_enabled: boolean };
 export type FormProps =
   | { kind: "plan"; plan: Plan }
-  | { kind: "filters"; admin: boolean; values: Filters; statuses: Option[] }
+  | {
+      kind: "filters";
+      admin: boolean;
+      values: Filters;
+      statuses: Option[];
+      accounts?: Option[];
+    }
   | { kind: "users"; search: string }
   | { kind: "run-topics"; runId: string; embedded?: boolean }
   | { kind: "system-settings"; settings: SystemSettings };
@@ -92,18 +98,73 @@ function TextField({
   );
 }
 
+function beijingDateOffset(daysAgo: number): string {
+  const target = new Date(Date.now() - daysAgo * 86400_000);
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Shanghai",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(target);
+}
+
 export function FiltersForm({
   admin,
   values,
   statuses,
+  accounts,
 }: {
   admin: boolean;
   values: Filters;
   statuses: Option[];
+  accounts?: Option[];
 }) {
+  const formRef = useRef<HTMLFormElement>(null);
+  const [uid, setUid] = useState(values.uid || "");
   const [status, setStatus] = useState(values.status || "");
+  const [start, setStart] = useState(values.start || "");
+  const [end, setEnd] = useState(values.end || "");
+
+  useEffect(() => {
+    setUid(values.uid || "");
+    setStatus(values.status || "");
+    setStart(values.start || "");
+    setEnd(values.end || "");
+  }, [values.uid, values.status, values.start, values.end]);
+
+  const today = beijingDateOffset(0);
+  const presets = [
+    { label: "今天", start: today, end: today },
+    { label: "近7天", start: beijingDateOffset(6), end: today },
+    { label: "近30天", start: beijingDateOffset(29), end: today },
+    { label: "全部", start: "", end: "" },
+  ];
+  const useAccountChoice = !admin && Boolean(accounts && accounts.length > 0);
+
+  function applyPreset(nextStart: string, nextEnd: string) {
+    setStart(nextStart);
+    setEnd(nextEnd);
+    const form = formRef.current;
+    if (!form) return;
+    const current = Object.fromEntries(new FormData(form)) as Record<
+      string,
+      string
+    >;
+    emit(form, "credit:filters", {
+      kind: "records",
+      values: {
+        ...current,
+        ...(useAccountChoice ? { uid } : {}),
+        status,
+        start: nextStart,
+        end: nextEnd,
+      },
+    });
+  }
+
   return (
     <form
+      ref={formRef}
       id="filter-form"
       className="credit-filter-form"
       onSubmit={(event) => {
@@ -124,14 +185,28 @@ export function FiltersForm({
           placeholder="完整用户名"
         />
       )}
-      <TextField
-        id="filter-uid"
-        name="uid"
-        label="微博 UID"
-        value={values.uid || ""}
-        placeholder={admin ? "全部微博" : "微博 UID"}
-        numeric
-      />
+      {useAccountChoice ? (
+        <div className="credit-field credit-field-account">
+          <Label htmlFor="filter-uid">微博账号</Label>
+          <input type="hidden" name="uid" value={uid} />
+          <Choice
+            id="filter-uid"
+            label="微博账号"
+            value={uid}
+            onChange={setUid}
+            options={[{ value: "", label: "全部微博" }, ...(accounts || [])]}
+          />
+        </div>
+      ) : (
+        <TextField
+          id="filter-uid"
+          name="uid"
+          label="微博 UID"
+          value={values.uid || ""}
+          placeholder="微博 UID"
+          numeric
+        />
+      )}
       <div className="credit-field">
         <Label htmlFor="filter-status">执行结果</Label>
         <input type="hidden" name="status" value={status} />
@@ -147,16 +222,34 @@ export function FiltersForm({
         id="filter-start"
         name="start"
         label="开始日期"
-        placeholder={admin ? undefined : "开始日期"}
-        initialValue={values.start}
+        placeholder="开始日期"
+        value={start}
+        onChange={setStart}
       />
       <DateField
         id="filter-end"
         name="end"
         label="结束日期"
-        placeholder={admin ? undefined : "结束日期"}
-        initialValue={values.end}
+        placeholder="结束日期"
+        value={end}
+        onChange={setEnd}
       />
+      <div className="credit-date-presets" role="group" aria-label="快捷日期范围">
+        {presets.map((preset) => {
+          const active = start === preset.start && end === preset.end;
+          return (
+            <button
+              key={preset.label}
+              type="button"
+              className="credit-date-preset"
+              aria-pressed={active}
+              onClick={() => applyPreset(preset.start, preset.end)}
+            >
+              {preset.label}
+            </button>
+          );
+        })}
+      </div>
       <div className="credit-filter-actions">
         <Button variant="outline" type="submit" className="h-9 text-xs">
           筛选
@@ -365,7 +458,7 @@ export function SystemSettingsForm({ settings }: { settings: SystemSettings }) {
             aria-describedby="registration-help"
           />
         </div>
-        <Button type="submit" size="sm">
+        <Button type="submit" size="sm" className="w-fit">
           {pending ? "正在保存…" : "保存系统设置"}
         </Button>
       </fieldset>
@@ -445,7 +538,7 @@ export function PlanForm({
             aria-describedby="plan-enabled-help"
           />
         </div>
-        <Button type="submit" className="w-full h-9 text-xs">
+        <Button type="submit" className="h-9 text-xs">
           {pending ? "正在保存…" : "保存签到计划"}
         </Button>
       </fieldset>
@@ -466,6 +559,18 @@ export function AppearanceSettings() {
   const [dark, setDark] = useState(() =>
     document.documentElement.classList.contains("dark"),
   );
+  useEffect(() => {
+    const sync = (event: Event) => {
+      const next = (event as CustomEvent<{ dark: boolean }>).detail?.dark;
+      setDark(
+        typeof next === "boolean"
+          ? next
+          : document.documentElement.classList.contains("dark"),
+      );
+    };
+    document.addEventListener("credit:theme-changed", sync);
+    return () => document.removeEventListener("credit:theme-changed", sync);
+  }, []);
   return (
     <div className="credit-switch-row">
       <Label htmlFor="client-dark-mode">深色模式</Label>

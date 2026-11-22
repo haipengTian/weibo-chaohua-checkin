@@ -122,6 +122,35 @@
   color: var(--muted-foreground);
   font-weight: 400;
 }
+.credit-date-presets {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--secondary);
+}
+.credit-controls .credit-date-preset {
+  height: 28px;
+  padding: 0 9px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--muted-foreground);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background-color 140ms ease, color 140ms ease, box-shadow 140ms ease;
+}
+.credit-controls .credit-date-preset:hover {
+  color: var(--foreground);
+}
+.credit-controls .credit-date-preset[aria-pressed="true"] {
+  background: var(--card);
+  color: var(--foreground);
+  box-shadow: 0 1px 2px rgb(24 24 27 / 8%);
+}
 .credit-filter-actions {
   display: flex;
   gap: 6px;

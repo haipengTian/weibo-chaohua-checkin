@@ -1083,9 +1083,9 @@ class Database:
             row.update(accounts=counts[0], expired=counts[1], errors=counts[2])
         return row
 
-    def anomalies(self, owner_id=None, *, page=1, page_size=20):
+    def anomalies(self, owner_id=None, *, kind=None, page=1, page_size=20):
         with self.connect() as conn:
-            sql = (
+            base_sql = (
                 "SELECT a.id,a.owner_id,a.uid,a.nickname,a.login_status,a.last_checked,u.username,"
                 "r.status AS run_status,r.message,r.started_at FROM accounts a JOIN users u ON u.id=a.owner_id "
                 "LEFT JOIN runs r ON r.id=(SELECT id FROM runs WHERE account_id=a.id ORDER BY started_at DESC LIMIT 1) "
@@ -1093,8 +1093,29 @@ class Database:
             )
             args = []
             if owner_id:
-                sql += " AND a.owner_id=?"
+                base_sql += " AND a.owner_id=?"
                 args.append(owner_id)
+            counts_row = conn.execute(
+                "SELECT count(*),"
+                "coalesce(sum(login_status='expired'),0),"
+                "coalesce(sum(login_status='error'),0),"
+                "coalesce(sum(login_status NOT IN ('expired','error') AND run_status NOT IN ('success','queued','running')),0) "
+                "FROM (" + base_sql + ")",
+                args,
+            ).fetchone()
+            counts = {
+                "all": counts_row[0],
+                "expired": counts_row[1],
+                "error": counts_row[2],
+                "run_failed": counts_row[3],
+            }
+            sql = base_sql
+            if kind == "expired":
+                sql += " AND a.login_status='expired'"
+            elif kind == "error":
+                sql += " AND a.login_status='error'"
+            elif kind == "run_failed":
+                sql += " AND a.login_status NOT IN ('expired','error') AND r.status NOT IN ('success','queued','running')"
             total = conn.execute("SELECT count(*) FROM (" + sql + ")", args).fetchone()[
                 0
             ]
@@ -1111,6 +1132,7 @@ class Database:
                 "total": total,
                 "page": page,
                 "page_size": page_size,
+                "counts": counts,
             }
 
     def needs_migration(self):

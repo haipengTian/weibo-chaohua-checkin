@@ -110,20 +110,46 @@ export function CheckinFootprint({ accounts: initialAccounts }: { accounts: Cale
               </TabsList>
             </div>
             <div className="footprint-body" data-period={period}>
-              <dl className="footprint-metrics">
-                <div>
-                  <dt>{periods[period]}已签</dt>
-                  <dd data-testid="footprint-success-days">
-                    {data ? <DayCount key={data.summary.success_days} value={data.summary.success_days} /> : "—"}
-                  </dd>
-                </div>
-                <div>
-                  <dt>连续签到</dt>
-                  <dd data-testid="footprint-streak">
-                    {data ? <DayCount key={data.summary.streak} value={data.summary.streak} /> : "—"}
-                  </dd>
-                </div>
-              </dl>
+              {(() => {
+                const elapsed = data ? data.days.filter((day) => day.date <= today) : [];
+                const totalElapsed = elapsed.length;
+                const successDays = data?.summary.success_days ?? 0;
+                const completionRate = totalElapsed
+                  ? Math.min(100, Math.round((successDays / totalElapsed) * 100))
+                  : 0;
+                const abnormalDays = elapsed.filter(
+                  (day) => day.status === "partial" || day.status === "failed",
+                ).length;
+                return (
+                  <div className="footprint-metrics-wrap">
+                    <dl className="footprint-metrics">
+                      <div>
+                        <dt>{periods[period]}已签</dt>
+                        <dd data-testid="footprint-success-days">
+                          {data ? <DayCount key={data.summary.success_days} value={data.summary.success_days} /> : "—"}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt>连续签到</dt>
+                        <dd data-testid="footprint-streak">
+                          {data ? <DayCount key={data.summary.streak} value={data.summary.streak} /> : "—"}
+                        </dd>
+                      </div>
+                    </dl>
+                    {data && totalElapsed > 0 && (
+                      <p className="footprint-summary">
+                        <span>
+                          完成率 <strong>{completionRate}%</strong>（{successDays}/{totalElapsed} 天）
+                        </span>
+                        <span aria-hidden="true">·</span>
+                        <span className={abnormalDays > 0 ? "footprint-summary-warn" : ""}>
+                          {abnormalDays > 0 ? `异常 ${abnormalDays} 天` : "暂无异常"}
+                        </span>
+                      </p>
+                    )}
+                  </div>
+                );
+              })()}
               <TabsContent value={period} key={period} className="footprint-chart">
                 {loading && <p className="sr-only" role="status">正在加载签到足迹…</p>}
                 {rollingDays ? (

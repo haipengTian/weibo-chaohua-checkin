@@ -271,6 +271,12 @@
   flex-wrap: wrap;
 }
 @media (max-width: 640px) {
+  .maibot-section-head {
+    gap: 6px;
+  }
+  .maibot-counter {
+    white-space: normal;
+  }
   .maibot-search {
     min-width: 100%;
   }

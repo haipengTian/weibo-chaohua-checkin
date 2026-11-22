@@ -1779,50 +1779,45 @@ td .secondary-text {
 }
 @media (max-width: 760px) {
   .client-dock {
-    left: auto;
-    right: max(16px, env(safe-area-inset-right));
-    bottom: max(14px, env(safe-area-inset-bottom));
-    translate: none;
+    left: 50%;
+    right: auto;
+    bottom: max(12px, env(safe-area-inset-bottom));
+    translate: -50% 0;
   }
   .dock-toggle {
-    display: grid;
-    width: 48px;
-    height: 48px;
-  }
-  .dock-toggle .icon {
-    transition: rotate 190ms ease-out;
-  }
-  .dock-toggle[aria-expanded="true"] .icon {
-    rotate: 90deg;
+    display: none;
   }
   .dock-nav {
-    display: none;
-    position: absolute;
-    right: 0;
-    bottom: calc(100% + 9px);
-    height: auto;
-    padding: 7px;
-    gap: 5px;
-    flex-direction: column;
-    border-radius: 15px;
-    background: var(--card);
-  }
-  .dock-toggle[aria-expanded="true"] + .dock-nav {
     display: flex;
-    animation: dock-reveal 180ms ease-out;
-  }
-  @keyframes dock-reveal {
-    from { opacity: 0; translate: 0 7px; }
+    position: static;
+    flex-direction: row;
+    align-items: center;
+    height: 58px;
+    padding: 5px 8px;
+    gap: 4px;
+    border-radius: 999px;
   }
   .dock-link {
-    display: flex;
+    display: inline-flex;
+    flex-direction: column;
     align-items: center;
-    gap: 9px;
-    width: 100%;
-    height: 44px;
-    padding: 0 12px;
-    border-radius: 9px;
+    justify-content: center;
+    gap: 2px;
+    width: auto;
+    min-width: 68px;
+    height: 46px;
+    padding: 4px 12px;
+    border-radius: 999px;
     background: transparent;
+    color: var(--muted-foreground);
+  }
+  .dock-link .icon {
+    width: 18px;
+    height: 18px;
+  }
+  .dock-link[aria-current="page"] {
+    background: var(--secondary);
+    color: var(--foreground);
   }
   .dock-label,
   .dock-link:is(:hover, :focus-visible) .dock-label {
@@ -1833,8 +1828,14 @@ td .secondary-text {
     border: 0;
     background: none;
     box-shadow: none;
+    font-size: 11px;
+    line-height: 1;
+    color: inherit;
   }
-  .dock-divider { display: none; }
+  .dock-divider {
+    height: 24px;
+    margin: 0 2px;
+  }
 }
 .client-mode #toast {
   bottom: calc(118px + env(safe-area-inset-bottom));
@@ -1944,7 +1945,7 @@ td .secondary-text {
     display: none;
   }
   .client-mode .client-content {
-    padding: 18px 16px 130px;
+    padding: 18px 16px 116px;
   }
   .client-mode .page-heading {
     margin-bottom: 24px;
@@ -2041,6 +2042,9 @@ td .secondary-text {
   width: 112px;
   min-width: 0;
 }
+.personal-runs .credit-filter-form > .credit-field-account {
+  width: 168px;
+}
 .personal-runs .credit-filter-form [data-slot="label"] {
   position: absolute;
   clip-path: inset(50%);
@@ -2049,11 +2053,11 @@ td .secondary-text {
   overflow: hidden;
   white-space: nowrap;
 }
-.personal-runs .credit-filter-form :is(input:not([type="hidden"]), button) {
+.personal-runs .credit-filter-form :is(input:not([type="hidden"]), button:not(.credit-date-preset)) {
   height: 32px;
   padding-inline: 8px;
 }
-.personal-runs .credit-filter-form :is(input:not([type="hidden"]), button:not([data-action])) {
+.personal-runs .credit-filter-form :is(input:not([type="hidden"]), button:not([data-action]):not(.credit-date-preset)) {
   border: 1px dashed var(--border);
   border-radius: 8px;
 }
@@ -2198,7 +2202,7 @@ td .secondary-text {
 .run-receipt-topics .topic-list > li { padding: 7px 0; border-bottom-style: dashed; }
 
 @media (max-width: 850px) {
-  .personal-run-table tr > :nth-child(6) { display: none; }
+  .personal-run-table .col-note { display: none; }
 }
 @media (max-width: 560px) {
   .run-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
@@ -2212,20 +2216,285 @@ td .secondary-text {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     width: 100%;
   }
-  .personal-runs .credit-filter-form > .credit-field { width: auto; }
+  .personal-runs .credit-filter-form > .credit-field,
+  .personal-runs .credit-filter-form > .credit-field-account { width: auto; }
+  .personal-runs .credit-date-presets,
   .personal-runs .credit-filter-actions { grid-column: 1 / -1; }
-  .personal-runs .credit-filter-form :is(input:not([type="hidden"]), button) { height: 36px; }
+  .personal-runs .credit-filter-form :is(input:not([type="hidden"]), button:not(.credit-date-preset)) { height: 36px; }
   .personal-run-table { table-layout: fixed; }
   .personal-run-table :is(th, td) { padding-inline: 5px; font-size: 12px; }
-  .personal-run-table tr > :nth-child(4),
-  .personal-run-table tr > :nth-child(5) { display: none; }
-  .personal-run-table th:first-child { width: 29%; }
-  .personal-run-table th:nth-child(2) { width: 26%; }
-  .personal-run-table th:last-child { width: 46px; }
+  .personal-run-table .col-counts,
+  .personal-run-table .col-trigger,
+  .personal-run-table .col-user { display: none; }
+  .personal-run-table .col-account { width: 32%; }
+  .personal-run-table .col-time { width: 28%; }
+  .personal-run-table .col-actions { width: 46px; }
   .personal-run-table :is(.run-time, .badge) { white-space: normal; }
   .personal-run-table .badge { line-height: 1.3; font-size: 11px; }
   .personal-run-table .secondary-text { overflow: hidden; text-overflow: ellipsis; }
   .personal-run-table .run-detail-button { width: 36px; height: 36px; }
   .personal-run-table .run-detail-button span { display: none; }
   .run-receipt-paper { padding: 20px 16px; }
+}
+/* Batch 1 & 2 UI polish: header theme toggle, account menu, clickable stats, admin flat tables */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.client-header-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.workspace-home .card:has(.account-list),
+.workspace-home .account-list {
+  overflow: visible;
+}
+
+.account-more {
+  position: relative;
+}
+.account-more > summary {
+  list-style: none;
+  cursor: pointer;
+  user-select: none;
+  padding: 4px 8px;
+  border-radius: 999px;
+  line-height: 1;
+  letter-spacing: 0.08em;
+}
+.account-more > summary::-webkit-details-marker {
+  display: none;
+}
+.account-more > summary:hover,
+.account-more[open] > summary {
+  background: var(--accent);
+  color: var(--foreground);
+}
+.account-more-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: 15;
+  min-width: 124px;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--card);
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.12);
+  display: grid;
+  gap: 2px;
+}
+.dark .account-more-menu {
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+}
+.account-more-item {
+  width: 100%;
+  text-align: left;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--foreground);
+  font-size: 12px;
+  padding: 7px 10px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.account-more-item:hover {
+  background: var(--accent);
+}
+
+.credit-plan-form button[type="submit"] {
+  width: 100%;
+}
+.client-profile .credit-plan-form button[type="submit"] {
+  width: auto;
+  justify-self: start;
+  padding-inline: 18px;
+}
+
+.stat-link {
+  display: block;
+  color: inherit;
+  text-decoration: none;
+  transition: border-color 0.16s ease, background-color 0.16s ease, transform 0.16s ease;
+}
+.stat-link:hover {
+  border-color: color-mix(in oklab, var(--foreground) 22%, var(--border));
+  background: color-mix(in oklab, var(--accent) 45%, var(--card));
+  transform: translateY(-1px);
+}
+.stat-link:focus-visible {
+  outline: 2px solid var(--foreground);
+  outline-offset: 2px;
+}
+.stat-alert {
+  border-color: color-mix(in oklab, var(--red) 35%, var(--border));
+  background: color-mix(in oklab, var(--red-bg) 55%, var(--card));
+}
+.stat-alert:hover {
+  border-color: color-mix(in oklab, var(--red) 55%, var(--border));
+  background: color-mix(in oklab, var(--red-bg) 78%, var(--card));
+}
+.stat-alert .stat-label .icon,
+.stat-alert .stat-value {
+  color: var(--red);
+}
+
+.overview-section {
+  margin-top: 28px;
+}
+.overview-section-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 14px;
+  margin-bottom: 12px;
+}
+.overview-section-head h2 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+.overview-section-head p {
+  margin: 3px 0 0;
+  font-size: 12px;
+  color: var(--muted-foreground);
+}
+
+.anomaly-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.anomaly-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 11px;
+  border: 1px dashed var(--border);
+  border-radius: 999px;
+  background: var(--background);
+  color: var(--muted-foreground);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.14s ease, color 0.14s ease, border-color 0.14s ease;
+}
+.anomaly-pill:hover {
+  background: var(--accent);
+  color: var(--foreground);
+}
+.anomaly-pill[aria-pressed="true"] {
+  border-style: solid;
+  border-color: var(--foreground);
+  background: var(--foreground);
+  color: var(--background);
+}
+.anomaly-pill .mono {
+  font-size: 11px;
+  opacity: 0.85;
+}
+
+.anomaly-actions {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+.admin-flat-table {
+  width: 100%;
+}
+.admin-flat-table :is(th, td) {
+  height: auto;
+  padding: 8px 10px;
+  border-top: 0;
+  border-bottom: 1px dashed var(--border);
+}
+.admin-flat-table th {
+  padding-block: 10px;
+  background: transparent;
+  color: var(--foreground);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.admin-flat-table tr:last-child td {
+  border-bottom: 0;
+}
+.admin-flat-table tbody tr:hover {
+  background: var(--sidebar);
+}
+.admin-flat-table :is(th, td):last-child {
+  text-align: right;
+}
+.admin-flat-table .badge {
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+.admin-flat-table .badge .dot {
+  display: none;
+}
+
+.admin-users .users-toolbar-host {
+  margin-bottom: 12px;
+}
+.admin-users .credit-users-toolbar {
+  padding: 0;
+}
+.admin-users .credit-user-search > .credit-field {
+  width: 220px;
+}
+.admin-runs .credit-filter-form > .credit-field,
+.admin-logs .credit-filter-form > .credit-field {
+  width: 124px;
+}
+
+@media (max-width: 640px) {
+  .client-header-right {
+    gap: 6px;
+  }
+  .overview-section-head {
+    align-items: flex-start;
+  }
+  .run-toolbar {
+    align-items: stretch;
+  }
+  .personal-runs .run-toolbar > .credit-controls {
+    width: 100%;
+    flex: 1 1 100%;
+  }
+  .personal-runs .credit-date-presets {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    width: 100%;
+  }
+  .anomaly-filters {
+    width: 100%;
+  }
+  .admin-users .credit-users-toolbar {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .admin-users .credit-user-search > .credit-field {
+    width: auto;
+    flex: 1 1 auto;
+  }
+  .admin-runs .credit-filter-form > .credit-field,
+  .admin-logs .credit-filter-form > .credit-field {
+    width: auto;
+  }
 }

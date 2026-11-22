@@ -66,15 +66,24 @@ export function DateField({
   name,
   label,
   initialValue = "",
+  value: controlledValue,
+  onChange,
   placeholder = "选择日期",
 }: {
   id: string;
   name: string;
   label: string;
   initialValue?: string;
+  value?: string;
+  onChange?: (next: string) => void;
   placeholder?: string;
 }) {
-  const [value, setValue] = useState(initialValue);
+  const [internalValue, setInternalValue] = useState(initialValue);
+  const value = controlledValue !== undefined ? controlledValue : internalValue;
+  const setValue = (next: string) => {
+    if (controlledValue === undefined) setInternalValue(next);
+    onChange?.(next);
+  };
   const [open, setOpen] = useState(false);
   const date = localDate(value);
   return (
